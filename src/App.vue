@@ -20,9 +20,13 @@
 
     <section v-else class="main-grid">
       <div class="card controls-card">
-        <h2>События</h2>
+        <div class="toolbar">
+          <h2>События</h2>
+          <button class="secondary" @click="isSettingsOpen = true">Настройки</button>
+        </div>
+
         <div class="event-blocks">
-          <section v-for="group in eventGroups" :key="group.id" class="event-group">
+          <section v-for="group in visibleEventGroups" :key="group.id" class="event-group">
             <h3>{{ group.label }}</h3>
             <div class="events-grid">
               <button
@@ -81,6 +85,39 @@
         <pre>{{ serializedEvents }}</pre>
       </div>
     </section>
+
+    <div v-if="isSettingsOpen" class="settings-overlay" @click.self="isSettingsOpen = false">
+      <section class="settings-modal card" role="dialog" aria-modal="true" aria-label="Настройки">
+        <div class="toolbar">
+          <h2>Настройки</h2>
+          <button class="secondary" @click="isSettingsOpen = false">Закрыть</button>
+        </div>
+
+        <div class="settings-block">
+          <h3>События</h3>
+          <div class="settings-groups">
+            <section v-for="group in eventGroups" :key="`settings-${group.id}`" class="settings-group">
+              <label class="toggle-row group-toggle">
+                <input v-model="groupVisibility[group.id]" type="checkbox" />
+                <span>{{ group.label }}</span>
+              </label>
+
+              <div class="settings-events">
+                <label v-for="event in group.events" :key="`settings-${event.type}`" class="toggle-row event-toggle">
+                  <input
+                    :checked="eventVisibility[event.type]"
+                    type="checkbox"
+                    :disabled="!groupVisibility[group.id]"
+                    @change="setEventVisibility(event.type, $event.target.checked)"
+                  />
+                  <span>{{ event.icon }} {{ event.label }}</span>
+                </label>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -92,6 +129,7 @@ const embedUrl = ref('');
 const urlError = ref('');
 const isSessionStarted = ref(false);
 const playerFrameRef = ref(null);
+const isSettingsOpen = ref(false);
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -123,12 +161,29 @@ const eventGroups = [
 ];
 
 const eventTypes = eventGroups.flatMap((group) => group.events);
+const groupVisibility = ref(Object.fromEntries(eventGroups.map((group) => [group.id, true])));
+const eventVisibility = ref(Object.fromEntries(eventTypes.map((event) => [event.type, true])));
+
+const visibleEventGroups = computed(() =>
+  eventGroups
+    .filter((group) => groupVisibility.value[group.id])
+    .map((group) => ({
+      ...group,
+      events: group.events.filter((event) => eventVisibility.value[event.type]),
+    }))
+    .filter((group) => group.events.length > 0),
+);
 
 const eventMetaByType = Object.fromEntries(eventTypes.map((event) => [event.type, event]));
 const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
+
+function setEventVisibility(type, isVisible) {
+  eventVisibility.value[type] = isVisible;
+}
+
 function parseVkEmbedUrl(url) {
   try {
     const parsed = new URL(url);
@@ -211,7 +266,6 @@ async function requestCurrentTime() {
 
 async function seekTo(timeSec) {
   const safeTime = Math.max(0, Math.floor(timeSec));
-
 
   if (vkPlayer?.seek) {
     try {

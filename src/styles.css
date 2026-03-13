@@ -152,6 +152,61 @@ button.secondary {
   background: #b42318;
 }
 
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+}
+
+.settings-modal {
+  width: min(760px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.settings-block h3 {
+  margin: 0 0 0.7rem;
+}
+
+.settings-groups {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.settings-group {
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.settings-events {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 0.3rem;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.toggle-row input {
+  margin: 0;
+}
+
+.event-toggle {
+  font-size: 0.92rem;
+  color: #475467;
+}
+
 .logs-card {
   margin-top: 1rem;
 }
@@ -220,4 +275,3 @@ pre {
   color: #b42318;
   margin: 0;
 }
-
