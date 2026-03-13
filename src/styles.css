@@ -95,47 +95,52 @@ button.secondary {
 
 .events-grid {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
 }
 
 .event-blocks {
-  display: grid;
-  gap: 0.9rem;
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
 }
 
 .event-group {
   border: 1px solid #eaecf0;
   border-radius: 12px;
-  padding: 0.7rem;
+  padding: 0.55rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
 }
 
 .event-group h3 {
-  margin: 0 0 0.55rem;
-  font-size: 0.95rem;
+  margin: 0;
+  font-size: 0.9rem;
   color: #344054;
+  white-space: nowrap;
 }
 
 .event-button {
-  width: 86px;
-  min-height: 86px;
+  width: 78px;
+  min-height: 78px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   gap: 0.2rem;
-  border-radius: 12px;
-  padding: 0.45rem;
+  border-radius: 10px;
+  padding: 0.4rem;
   text-align: center;
 }
 
 .event-icon {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   line-height: 1;
 }
 
 .event-label {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   line-height: 1.15;
 }
 
