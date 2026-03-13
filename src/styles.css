@@ -88,6 +88,29 @@ button.secondary {
   gap: 0.7rem;
 }
 
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.view-switch {
+  display: inline-flex;
+  background: #f2f4f7;
+  border-radius: 10px;
+  padding: 0.2rem;
+  gap: 0.2rem;
+}
+
+.view-switch button {
+  padding: 0.45rem 0.7rem;
+}
+
+.view-switch button.active {
+  background: #175cd3;
+  color: #fff;
+}
+
 .controls-card h2,
 .logs-card h2 {
   margin: 0.4rem 0 0.8rem;
@@ -255,6 +278,31 @@ button.secondary {
 
 .debug-block {
   margin-top: 1rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.stat-card {
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  padding: 0.7rem;
+  background: #f8fafc;
+}
+
+.stat-label {
+  margin: 0;
+  color: #667085;
+  font-size: 0.85rem;
+}
+
+.stat-value {
+  margin: 0.25rem 0 0;
+  font-size: 1.4rem;
+  font-weight: 700;
 }
 
 pre {

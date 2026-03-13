@@ -68,17 +68,52 @@
 
     <section v-if="isSessionStarted" class="card logs-card">
       <div class="toolbar">
-        <h2>Список зафиксированных событий</h2>
-        <button class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
+        <h2>{{ logsViewMode === 'history' ? 'История событий' : 'Статистика' }}</h2>
+        <div class="toolbar-actions">
+          <div class="view-switch" role="tablist" aria-label="Переключение вида блока событий">
+            <button
+              :class="['secondary', { active: logsViewMode === 'history' }]"
+              role="tab"
+              :aria-selected="logsViewMode === 'history'"
+              @click="logsViewMode = 'history'"
+            >
+              История
+            </button>
+            <button
+              :class="['secondary', { active: logsViewMode === 'stats' }]"
+              role="tab"
+              :aria-selected="logsViewMode === 'stats'"
+              @click="logsViewMode = 'stats'"
+            >
+              Статистика
+            </button>
+          </div>
+          <button class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
+        </div>
       </div>
 
-      <ul v-if="events.length" class="event-list">
+      <ul v-if="logsViewMode === 'history' && events.length" class="event-list">
         <li v-for="event in events" :key="event.id" class="event-item">
           <button class="time-link" @click="seekTo(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
         </li>
       </ul>
-      <p v-else class="hint">Пока нет событий — нажмите одну из кнопок выше.</p>
+      <p v-else-if="logsViewMode === 'history'" class="hint">Пока нет событий — нажмите одну из кнопок выше.</p>
+
+      <div v-else class="stats-grid">
+        <article class="stat-card">
+          <p class="stat-label">Очки</p>
+          <p class="stat-value">{{ summaryStats.points }}</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">Подборы</p>
+          <p class="stat-value">{{ summaryStats.rebounds }}</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">Потери</p>
+          <p class="stat-value">{{ summaryStats.turnovers }}</p>
+        </article>
+      </div>
 
       <div v-if="isDebugMode" class="debug-block">
         <h3>Debug: JSON для отправки на backend</h3>
@@ -130,6 +165,7 @@ const urlError = ref('');
 const isSessionStarted = ref(false);
 const playerFrameRef = ref(null);
 const isSettingsOpen = ref(false);
+const logsViewMode = ref('history');
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -179,6 +215,30 @@ const isDebugMode = new URLSearchParams(window.location.search).get('debug') ===
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
+const summaryStats = computed(() =>
+  events.value.reduce(
+    (acc, event) => {
+      if (event.type === 'made_2pt') {
+        acc.points += 2;
+      }
+
+      if (event.type === 'made_3pt') {
+        acc.points += 3;
+      }
+
+      if (event.type === 'rebound') {
+        acc.rebounds += 1;
+      }
+
+      if (event.type === 'turnover') {
+        acc.turnovers += 1;
+      }
+
+      return acc;
+    },
+    { points: 0, rebounds: 0, turnovers: 0 },
+  ),
+);
 
 function setEventVisibility(type, isVisible) {
   eventVisibility.value[type] = isVisible;
