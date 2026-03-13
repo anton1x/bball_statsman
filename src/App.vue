@@ -49,17 +49,28 @@
           <strong>Видео</strong>
           <button class="secondary" @click="resetSession">Сменить ссылку</button>
         </div>
-        <iframe
-          v-if="embedUrl"
-          ref="playerFrameRef"
-          :src="embedUrl"
-          width="100%"
-          height="520"
-          frameborder="0"
-          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-          allowfullscreen
-          @load="onPlayerLoad"
-        ></iframe>
+        <div class="player-frame-wrap" v-if="embedUrl">
+          <iframe
+            ref="playerFrameRef"
+            :src="embedUrl"
+            width="100%"
+            height="520"
+            frameborder="0"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+            allowfullscreen
+            @load="onPlayerLoad"
+          ></iframe>
+          <transition name="event-pop">
+            <div
+              v-if="animatedEvent"
+              :key="animatedEvent.id"
+              class="player-event-float"
+              :aria-label="`Событие: ${animatedEvent.label}`"
+            >
+              <span>{{ animatedEvent.icon }}</span>
+            </div>
+          </transition>
+        </div>
         <p v-else class="error">
           Не удалось собрать embed-ссылку. Проверьте формат URL и попробуйте снова.
         </p>
@@ -157,7 +168,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const videoUrl = ref('');
 const embedUrl = ref('');
@@ -170,8 +181,11 @@ const logsViewMode = ref('history');
 const events = ref([]);
 const currentTimeSec = ref(0);
 const hasSyncedTime = ref(false);
+const animatedEvent = ref(null);
+const animatedEventRenderKey = ref(0);
 
 let syncInterval = null;
+let animationTimeout = null;
 let vkPlayer = null;
 
 const eventGroups = [
@@ -284,6 +298,7 @@ function startSession() {
   embedUrl.value = parsedUrl;
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
+  animatedEvent.value = null;
   isSessionStarted.value = true;
 }
 
@@ -294,6 +309,7 @@ function resetSession() {
   embedUrl.value = '';
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
+  animatedEvent.value = null;
 }
 
 function postPlayerCommand(payload) {
@@ -419,6 +435,30 @@ function clearEvents() {
   events.value = [];
 }
 
+function triggerEventAnimationForSecond(second) {
+  const lastEventAtSecond = [...events.value].reverse().find((event) => event.videoTimeSec === second);
+
+  if (!lastEventAtSecond) {
+    return;
+  }
+
+  const meta = eventMetaByType[lastEventAtSecond.type];
+  animatedEvent.value = {
+    id: `${lastEventAtSecond.id}-${animatedEventRenderKey.value}`,
+    icon: meta?.icon || '🏀',
+    label: meta?.label || lastEventAtSecond.type,
+  };
+  animatedEventRenderKey.value += 1;
+
+  if (animationTimeout) {
+    clearTimeout(animationTimeout);
+  }
+
+  animationTimeout = setTimeout(() => {
+    animatedEvent.value = null;
+  }, 1000);
+}
+
 function eventLabel(type) {
   return eventMetaByType[type]?.label || type;
 }
@@ -441,6 +481,14 @@ function formatSeconds(total) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+watch(currentTimeSec, (nextSecond, previousSecond) => {
+  if (!hasSyncedTime.value || nextSecond === previousSecond) {
+    return;
+  }
+
+  triggerEventAnimationForSecond(nextSecond);
+});
+
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
 });
@@ -448,6 +496,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopSync();
   vkPlayer = null;
+  if (animationTimeout) {
+    clearTimeout(animationTimeout);
+    animationTimeout = null;
+  }
+  animatedEvent.value = null;
   window.removeEventListener('message', handlePlayerMessage);
 });
 </script>
