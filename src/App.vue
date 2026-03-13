@@ -98,6 +98,7 @@ const currentTimeSec = ref(0);
 const hasSyncedTime = ref(false);
 
 let syncInterval = null;
+let vkPlayer = null;
 
 const eventTypes = [
   { type: 'made_2pt', label: '2-очковое попадание', tone: 'positive' },
@@ -163,6 +164,7 @@ function startSession() {
 
 function resetSession() {
   stopSync();
+  vkPlayer = null;
   isSessionStarted.value = false;
   embedUrl.value = '';
   currentTimeSec.value = 0;
@@ -178,16 +180,40 @@ function postPlayerCommand(payload) {
   target.postMessage(JSON.stringify(payload), '*');
 }
 
-function requestCurrentTime() {
+async function requestCurrentTime() {
+  if (vkPlayer?.getCurrentTime) {
+    try {
+      const time = await vkPlayer.getCurrentTime();
+      if (typeof time === 'number' && Number.isFinite(time)) {
+        currentTimeSec.value = Math.max(0, Math.floor(time));
+        hasSyncedTime.value = true;
+        return;
+      }
+    } catch {
+      // fallback to postMessage API
+    }
+  }
+
   postPlayerCommand({ type: 'vk_player_get_current_time' });
   postPlayerCommand({ type: 'getCurrentTime' });
   postPlayerCommand({ method: 'getCurrentTime' });
 }
 
-function seekTo(timeSec) {
+async function seekTo(timeSec) {
   const safeTime = Math.max(0, Math.floor(timeSec));
 
-  // VK embeds can expose slightly different message contracts; send several compatible shapes.
+  if (vkPlayer?.setCurrentTime) {
+    try {
+      await vkPlayer.setCurrentTime(safeTime);
+      currentTimeSec.value = safeTime;
+      hasSyncedTime.value = true;
+      return;
+    } catch {
+      // fallback to postMessage API
+    }
+  }
+
+  // Fallback for embeds where direct JS API object is not available.
   postPlayerCommand({ type: 'setCurrentTime', data: safeTime });
   postPlayerCommand({ type: 'setCurrentTime', time: safeTime });
   postPlayerCommand({ type: 'vk_player_set_current_time', time: safeTime });
@@ -199,7 +225,17 @@ function seekTo(timeSec) {
   requestCurrentTime();
 }
 
-function onPlayerLoad() {
+async function onPlayerLoad() {
+  const iframe = playerFrameRef.value;
+
+  if (iframe && window.VK?.VideoPlayer) {
+    try {
+      vkPlayer = await window.VK.VideoPlayer(iframe);
+    } catch {
+      vkPlayer = null;
+    }
+  }
+
   startSync();
   requestCurrentTime();
 }
@@ -286,6 +322,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopSync();
+  vkPlayer = null;
   window.removeEventListener('message', handlePlayerMessage);
 });
 </script>
