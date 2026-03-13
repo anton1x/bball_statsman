@@ -49,15 +49,22 @@
         <p class="hint">{{ syncHint }}</p>
 
         <h2>События</h2>
-        <div class="events-grid">
-          <button
-            v-for="event in eventTypes"
-            :key="event.type"
-            :disabled="!hasSyncedTime"
-            @click="addEvent(event.type)"
-          >
-            {{ event.label }}
-          </button>
+        <div class="event-blocks">
+          <section v-for="group in eventGroups" :key="group.id" class="event-group">
+            <h3>{{ group.label }}</h3>
+            <div class="events-grid">
+              <button
+                v-for="event in group.events"
+                :key="event.type"
+                :class="['event-button', `event-${event.tone}`]"
+                :disabled="!hasSyncedTime"
+                @click="addEvent(event.type)"
+              >
+                <span class="event-icon" aria-hidden="true">{{ event.icon }}</span>
+                <span class="event-label">{{ event.label }}</span>
+              </button>
+            </div>
+          </section>
         </div>
       </div>
     </section>
@@ -100,13 +107,29 @@ const hasSyncedTime = ref(false);
 let syncInterval = null;
 let vkPlayer = null;
 
-const eventTypes = [
-  { type: 'made_2pt', label: '2-очковое попадание', tone: 'positive' },
-  { type: 'made_3pt', label: '3-очковое попадание', tone: 'positive' },
-  { type: 'missed_shot', label: 'Неудачный бросок', tone: 'negative' },
-  { type: 'rebound', label: 'Подбор', tone: 'positive' },
-  { type: 'turnover', label: 'Потеря', tone: 'negative' },
+const eventGroups = [
+  {
+    id: 'shots',
+    label: 'Броски',
+    events: [
+      { type: 'made_2pt', label: '2-очковое', tone: 'positive', icon: '🏀' },
+      { type: 'made_3pt', label: '3-очковое', tone: 'positive', icon: '🎯' },
+      { type: 'missed_shot', label: 'Промах', tone: 'negative', icon: '❌' },
+    ],
+  },
+  {
+    id: 'defense',
+    label: 'Защита',
+    events: [{ type: 'turnover', label: 'Потеря', tone: 'negative', icon: '🚫' }],
+  },
+  {
+    id: 'rebounds',
+    label: 'Подборы',
+    events: [{ type: 'rebound', label: 'Подбор', tone: 'positive', icon: '👐' }],
+  },
 ];
+
+const eventTypes = eventGroups.flatMap((group) => group.events);
 
 const eventMetaByType = Object.fromEntries(eventTypes.map((event) => [event.type, event]));
 const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
