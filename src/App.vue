@@ -106,12 +106,20 @@
           <p class="stat-value">{{ summaryStats.points }}</p>
         </article>
         <article class="stat-card">
+          <p class="stat-label">Ассисты</p>
+          <p class="stat-value">{{ summaryStats.assists }}</p>
+        </article>
+        <article class="stat-card">
           <p class="stat-label">Подборы</p>
           <p class="stat-value">{{ summaryStats.rebounds }}</p>
         </article>
         <article class="stat-card">
           <p class="stat-label">Потери</p>
           <p class="stat-value">{{ summaryStats.turnovers }}</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">Перехваты</p>
+          <p class="stat-value">{{ summaryStats.steals }}</p>
         </article>
       </div>
 
@@ -185,9 +193,19 @@ const eventGroups = [
     ],
   },
   {
+    id: 'possesion',
+    label: 'Владение',
+    events: [
+      { type: 'assist', label: 'Ассист', tone: 'positive', icon: '🫶' },
+      { type: 'turnover', label: 'Потеря', tone: 'negative', icon: '🚫' },
+    ],
+  },
+  {
     id: 'defense',
     label: 'Защита',
-    events: [{ type: 'turnover', label: 'Потеря', tone: 'negative', icon: '🚫' }],
+    events: [
+      {type: 'steal', label: 'Перехват', tone: 'positive', icon: '🥷'}
+    ],
   },
   {
     id: 'rebounds',
@@ -234,9 +252,17 @@ const summaryStats = computed(() =>
         acc.turnovers += 1;
       }
 
+      if (event.type === 'steal') {
+        acc.steals += 1;
+      }
+
+      if (event.type === 'assist') {
+        acc.assists += 1;
+      }
+
       return acc;
     },
-    { points: 0, rebounds: 0, turnovers: 0 },
+    { points: 0, rebounds: 0, turnovers: 0, steals: 0, assists: 0 },
   ),
 );
 
