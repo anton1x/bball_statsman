@@ -13,10 +13,7 @@
         type="url"
         placeholder="https://vkvideo.ru/video-123_456"
       />
-      <p class="hint">
-        Поддерживаются ссылки вида <code>.../video-oid_id</code>. Для тайминга используйте встроенный секундомер,
-        при необходимости можно вручную поправить время события.
-      </p>
+      <p class="hint">Поддерживаются ссылки вида <code>.../video-oid_id</code>.</p>
       <button :disabled="!canStart" @click="startSession">Открыть матч</button>
       <p v-if="urlError" class="error">{{ urlError }}</p>
     </section>
@@ -29,12 +26,14 @@
         </div>
         <iframe
           v-if="embedUrl"
+          ref="playerFrameRef"
           :src="embedUrl"
           width="100%"
           height="390"
           frameborder="0"
           allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
           allowfullscreen
+          @load="onPlayerLoad"
         ></iframe>
         <p v-else class="error">
           Не удалось собрать embed-ссылку. Проверьте формат URL и попробуйте снова.
@@ -42,22 +41,21 @@
       </div>
 
       <div class="card controls-card">
-        <h2>Текущее время</h2>
+        <h2>Текущее время в видео</h2>
         <div class="timer-row">
           <div class="timer">{{ formatSeconds(currentTimeSec) }}</div>
-          <div class="timer-buttons">
-            <button class="secondary" @click="toggleTimer">{{ timerRunning ? 'Пауза' : 'Старт' }}</button>
-            <button class="secondary" @click="adjustTime(-5)">-5 сек</button>
-            <button class="secondary" @click="adjustTime(5)">+5 сек</button>
-          </div>
+          <button class="secondary" @click="requestCurrentTime">Обновить время</button>
         </div>
-
-        <label for="manualTime">Ручная корректировка (сек)</label>
-        <input id="manualTime" type="number" min="0" :value="currentTimeSec" @change="setManualTime" />
+        <p class="hint">{{ syncHint }}</p>
 
         <h2>События</h2>
         <div class="events-grid">
-          <button v-for="event in eventTypes" :key="event.type" @click="addEvent(event.type)">
+          <button
+            v-for="event in eventTypes"
+            :key="event.type"
+            :disabled="!hasSyncedTime"
+            @click="addEvent(event.type)"
+          >
             {{ event.label }}
           </button>
         </div>
@@ -95,17 +93,19 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const videoUrl = ref('');
 const embedUrl = ref('');
 const urlError = ref('');
 const isSessionStarted = ref(false);
+const playerFrameRef = ref(null);
 
 const events = ref([]);
 const currentTimeSec = ref(0);
-const timerRunning = ref(false);
-let timerInterval = null;
+const hasSyncedTime = ref(false);
+
+let syncInterval = null;
 
 const eventTypes = [
   { type: 'made_shot', label: 'Успешный бросок' },
@@ -116,6 +116,11 @@ const eventTypes = [
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
+const syncHint = computed(() =>
+  hasSyncedTime.value
+    ? 'Время берется из VK плеера. При клике на событие фиксируется текущий таймкод видео.'
+    : 'Ожидаем синхронизацию с плеером. Запустите видео и нажмите «Обновить время».',
+);
 
 function parseVkEmbedUrl(url) {
   try {
@@ -133,6 +138,7 @@ function parseVkEmbedUrl(url) {
     const embed = new URL('https://vkvideo.ru/video_ext.php');
     embed.searchParams.set('oid', oid);
     embed.searchParams.set('id', id);
+    embed.searchParams.set('js_api', '1');
 
     if (hash) {
       embed.searchParams.set('hash', hash);
@@ -154,17 +160,82 @@ function startSession() {
 
   urlError.value = '';
   embedUrl.value = parsedUrl;
+  currentTimeSec.value = 0;
+  hasSyncedTime.value = false;
   isSessionStarted.value = true;
 }
 
 function resetSession() {
-  stopTimer();
+  stopSync();
   isSessionStarted.value = false;
   embedUrl.value = '';
   currentTimeSec.value = 0;
+  hasSyncedTime.value = false;
+}
+
+function postPlayerCommand(payload) {
+  const target = playerFrameRef.value?.contentWindow;
+  if (!target) {
+    return;
+  }
+
+  target.postMessage(JSON.stringify(payload), '*');
+}
+
+function requestCurrentTime() {
+  postPlayerCommand({ type: 'vk_player_get_current_time' });
+  postPlayerCommand({ type: 'getCurrentTime' });
+  postPlayerCommand({ method: 'getCurrentTime' });
+}
+
+function onPlayerLoad() {
+  startSync();
+  requestCurrentTime();
+}
+
+function startSync() {
+  stopSync();
+  syncInterval = setInterval(() => {
+    requestCurrentTime();
+  }, 1000);
+}
+
+function stopSync() {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+}
+
+function handlePlayerMessage(event) {
+  if (!event.origin.includes('vkvideo.ru') && !event.origin.includes('vk.com')) {
+    return;
+  }
+
+  let payload = event.data;
+
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return;
+    }
+  }
+
+  const candidateTime =
+    payload?.current_time ?? payload?.currentTime ?? payload?.time ?? payload?.data?.current_time ?? payload?.data?.time;
+
+  if (typeof candidateTime === 'number' && Number.isFinite(candidateTime)) {
+    currentTimeSec.value = Math.max(0, Math.floor(candidateTime));
+    hasSyncedTime.value = true;
+  }
 }
 
 function addEvent(type) {
+  if (!hasSyncedTime.value) {
+    return;
+  }
+
   events.value.push({
     id: crypto.randomUUID(),
     videoTimeSec: currentTimeSec.value,
@@ -190,36 +261,12 @@ function formatSeconds(total) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
-function toggleTimer() {
-  if (timerRunning.value) {
-    stopTimer();
-    return;
-  }
-
-  timerRunning.value = true;
-  timerInterval = setInterval(() => {
-    currentTimeSec.value += 1;
-  }, 1000);
-}
-
-function stopTimer() {
-  timerRunning.value = false;
-  if (timerInterval) {
-    clearInterval(timerInterval);
-    timerInterval = null;
-  }
-}
-
-function adjustTime(delta) {
-  currentTimeSec.value = Math.max(0, currentTimeSec.value + delta);
-}
-
-function setManualTime(event) {
-  const value = Number(event.target.value);
-  currentTimeSec.value = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
-}
+onMounted(() => {
+  window.addEventListener('message', handlePlayerMessage);
+});
 
 onBeforeUnmount(() => {
-  stopTimer();
+  stopSync();
+  window.removeEventListener('message', handlePlayerMessage);
 });
 </script>
