@@ -202,9 +202,10 @@ async function requestCurrentTime() {
 async function seekTo(timeSec) {
   const safeTime = Math.max(0, Math.floor(timeSec));
 
-  if (vkPlayer?.setCurrentTime) {
+
+  if (vkPlayer?.seek) {
     try {
-      await vkPlayer.setCurrentTime(safeTime);
+      await vkPlayer.seek(safeTime);
       currentTimeSec.value = safeTime;
       hasSyncedTime.value = true;
       return;
