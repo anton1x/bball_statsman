@@ -41,7 +41,7 @@ header p {
 
 .main-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1rem;
   margin-top: 1rem;
 }
@@ -91,19 +91,6 @@ button.secondary {
 .controls-card h2,
 .logs-card h2 {
   margin: 0.4rem 0 0.8rem;
-}
-
-.timer-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.8rem;
-  margin-bottom: 1rem;
-}
-
-.timer {
-  font-size: 1.5rem;
-  font-weight: 700;
 }
 
 .events-grid {
@@ -229,8 +216,3 @@ pre {
   margin: 0;
 }
 
-@media (max-width: 900px) {
-  .main-grid {
-    grid-template-columns: 1fr;
-  }
-}

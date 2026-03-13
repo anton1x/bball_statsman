@@ -19,35 +19,7 @@
     </section>
 
     <section v-else class="main-grid">
-      <div class="card player-card">
-        <div class="toolbar">
-          <strong>Видео</strong>
-          <button class="secondary" @click="resetSession">Сменить ссылку</button>
-        </div>
-        <iframe
-          v-if="embedUrl"
-          ref="playerFrameRef"
-          :src="embedUrl"
-          width="100%"
-          height="390"
-          frameborder="0"
-          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-          allowfullscreen
-          @load="onPlayerLoad"
-        ></iframe>
-        <p v-else class="error">
-          Не удалось собрать embed-ссылку. Проверьте формат URL и попробуйте снова.
-        </p>
-      </div>
-
       <div class="card controls-card">
-        <h2>Текущее время в видео</h2>
-        <div class="timer-row">
-          <div class="timer">{{ formatSeconds(currentTimeSec) }}</div>
-          <button class="secondary" @click="requestCurrentTime">Обновить время</button>
-        </div>
-        <p class="hint">{{ syncHint }}</p>
-
         <h2>События</h2>
         <div class="event-blocks">
           <section v-for="group in eventGroups" :key="group.id" class="event-group">
@@ -66,6 +38,27 @@
             </div>
           </section>
         </div>
+      </div>
+
+      <div class="card player-card">
+        <div class="toolbar">
+          <strong>Видео</strong>
+          <button class="secondary" @click="resetSession">Сменить ссылку</button>
+        </div>
+        <iframe
+          v-if="embedUrl"
+          ref="playerFrameRef"
+          :src="embedUrl"
+          width="100%"
+          height="520"
+          frameborder="0"
+          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+          allowfullscreen
+          @load="onPlayerLoad"
+        ></iframe>
+        <p v-else class="error">
+          Не удалось собрать embed-ссылку. Проверьте формат URL и попробуйте снова.
+        </p>
       </div>
     </section>
 
@@ -136,12 +129,6 @@ const isDebugMode = new URLSearchParams(window.location.search).get('debug') ===
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
-const syncHint = computed(() =>
-  hasSyncedTime.value
-    ? 'Время берется из VK плеера. При клике на событие фиксируется текущий таймкод видео.'
-    : 'Ожидаем синхронизацию с плеером. Запустите видео и нажмите «Обновить время».',
-);
-
 function parseVkEmbedUrl(url) {
   try {
     const parsed = new URL(url);
