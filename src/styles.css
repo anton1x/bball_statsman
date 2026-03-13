@@ -106,11 +106,6 @@ button.secondary {
   font-weight: 700;
 }
 
-.timer-buttons {
-  display: flex;
-  gap: 0.4rem;
-}
-
 .events-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -121,17 +116,50 @@ button.secondary {
   margin-top: 1rem;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 0.8rem;
+.event-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
 }
 
-th,
-td {
-  border-bottom: 1px solid #eaecf0;
-  text-align: left;
-  padding: 0.45rem;
+.event-item {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+}
+
+.time-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #eef4ff;
+  color: #175cd3;
+  border: 1px solid #b2ccff;
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+}
+
+.event-name {
+  font-weight: 600;
+}
+
+.tone-positive {
+  color: #067647;
+}
+
+.tone-negative {
+  color: #b42318;
+}
+
+.tone-neutral {
+  color: #344054;
+}
+
+.debug-block {
+  margin-top: 1rem;
 }
 
 pre {

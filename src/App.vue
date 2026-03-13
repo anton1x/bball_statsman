@@ -64,30 +64,22 @@
 
     <section v-if="isSessionStarted" class="card logs-card">
       <div class="toolbar">
-        <h2>Лента событий</h2>
+        <h2>Список зафиксированных событий</h2>
         <button class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
       </div>
 
-      <table v-if="events.length">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Время</th>
-            <th>Тип</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(event, index) in events" :key="event.id">
-            <td>{{ index + 1 }}</td>
-            <td>{{ formatSeconds(event.videoTimeSec) }}</td>
-            <td>{{ event.type }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <ul v-if="events.length" class="event-list">
+        <li v-for="event in events" :key="event.id" class="event-item">
+          <button class="time-link" @click="seekTo(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
+          <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
+        </li>
+      </ul>
       <p v-else class="hint">Пока нет событий — нажмите одну из кнопок выше.</p>
 
-      <h3>JSON для отправки на backend</h3>
-      <pre>{{ serializedEvents }}</pre>
+      <div v-if="isDebugMode" class="debug-block">
+        <h3>Debug: JSON для отправки на backend</h3>
+        <pre>{{ serializedEvents }}</pre>
+      </div>
     </section>
   </div>
 </template>
@@ -108,11 +100,14 @@ const hasSyncedTime = ref(false);
 let syncInterval = null;
 
 const eventTypes = [
-  { type: 'made_shot', label: 'Успешный бросок' },
-  { type: 'missed_shot', label: 'Неудачный бросок' },
-  { type: 'rebound', label: 'Подбор' },
-  { type: 'turnover', label: 'Потеря' },
+  { type: 'made_shot', label: 'Успешный бросок', tone: 'positive' },
+  { type: 'missed_shot', label: 'Неудачный бросок', tone: 'negative' },
+  { type: 'rebound', label: 'Подбор', tone: 'neutral' },
+  { type: 'turnover', label: 'Потеря', tone: 'negative' },
 ];
+
+const eventMetaByType = Object.fromEntries(eventTypes.map((event) => [event.type, event]));
+const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
@@ -188,6 +183,14 @@ function requestCurrentTime() {
   postPlayerCommand({ method: 'getCurrentTime' });
 }
 
+function seekTo(timeSec) {
+  const safeTime = Math.max(0, Math.floor(timeSec));
+  postPlayerCommand({ type: 'setCurrentTime', data: safeTime });
+  postPlayerCommand({ type: 'vk_player_set_current_time', time: safeTime });
+  postPlayerCommand({ method: 'setCurrentTime', value: safeTime });
+  currentTimeSec.value = safeTime;
+}
+
 function onPlayerLoad() {
   startSync();
   requestCurrentTime();
@@ -245,6 +248,14 @@ function addEvent(type) {
 
 function clearEvents() {
   events.value = [];
+}
+
+function eventLabel(type) {
+  return eventMetaByType[type]?.label || type;
+}
+
+function toneClass(type) {
+  return `tone-${eventMetaByType[type]?.tone || 'neutral'}`;
 }
 
 function formatSeconds(total) {
