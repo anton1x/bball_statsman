@@ -109,16 +109,16 @@ button.secondary {
   border: 1px solid #eaecf0;
   border-radius: 12px;
   padding: 0.55rem;
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
+  display: grid;
+  gap: 0.4rem;
 }
 
 .event-group h3 {
   margin: 0;
-  font-size: 0.9rem;
-  color: #344054;
-  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #667085;
+  letter-spacing: 0.01em;
 }
 
 .event-button {
