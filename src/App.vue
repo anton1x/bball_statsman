@@ -100,9 +100,10 @@ const hasSyncedTime = ref(false);
 let syncInterval = null;
 
 const eventTypes = [
-  { type: 'made_shot', label: 'Успешный бросок', tone: 'positive' },
+  { type: 'made_2pt', label: '2-очковое попадание', tone: 'positive' },
+  { type: 'made_3pt', label: '3-очковое попадание', tone: 'positive' },
   { type: 'missed_shot', label: 'Неудачный бросок', tone: 'negative' },
-  { type: 'rebound', label: 'Подбор', tone: 'neutral' },
+  { type: 'rebound', label: 'Подбор', tone: 'positive' },
   { type: 'turnover', label: 'Потеря', tone: 'negative' },
 ];
 
@@ -185,10 +186,17 @@ function requestCurrentTime() {
 
 function seekTo(timeSec) {
   const safeTime = Math.max(0, Math.floor(timeSec));
+
+  // VK embeds can expose slightly different message contracts; send several compatible shapes.
   postPlayerCommand({ type: 'setCurrentTime', data: safeTime });
+  postPlayerCommand({ type: 'setCurrentTime', time: safeTime });
   postPlayerCommand({ type: 'vk_player_set_current_time', time: safeTime });
   postPlayerCommand({ method: 'setCurrentTime', value: safeTime });
+  postPlayerCommand({ method: 'setCurrentTime', args: [safeTime] });
+  postPlayerCommand({ event: 'command', func: 'setCurrentTime', args: [safeTime] });
+
   currentTimeSec.value = safeTime;
+  requestCurrentTime();
 }
 
 function onPlayerLoad() {
