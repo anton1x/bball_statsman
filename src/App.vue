@@ -19,6 +19,31 @@
     </section>
 
     <section v-else class="main-grid">
+      <div class="card controls-card">
+        <div class="toolbar">
+          <h2>События</h2>
+          <button class="secondary" @click="isSettingsOpen = true">Настройки</button>
+        </div>
+
+        <div class="event-blocks">
+          <section v-for="group in visibleEventGroups" :key="group.id" class="event-group">
+            <h3>{{ group.label }}</h3>
+            <div class="events-grid">
+              <button
+                v-for="event in group.events"
+                :key="event.type"
+                :class="['event-button', `event-${event.tone}`]"
+                :disabled="!hasSyncedTime"
+                @click="addEvent(event.type)"
+              >
+                <span class="event-icon" aria-hidden="true">{{ event.icon }}</span>
+                <span class="event-label">{{ event.label }}</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+
       <div class="card player-card">
         <div class="toolbar">
           <strong>Видео</strong>
@@ -29,7 +54,7 @@
           ref="playerFrameRef"
           :src="embedUrl"
           width="100%"
-          height="390"
+          height="520"
           frameborder="0"
           allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
           allowfullscreen
@@ -38,27 +63,6 @@
         <p v-else class="error">
           Не удалось собрать embed-ссылку. Проверьте формат URL и попробуйте снова.
         </p>
-      </div>
-
-      <div class="card controls-card">
-        <h2>Текущее время в видео</h2>
-        <div class="timer-row">
-          <div class="timer">{{ formatSeconds(currentTimeSec) }}</div>
-          <button class="secondary" @click="requestCurrentTime">Обновить время</button>
-        </div>
-        <p class="hint">{{ syncHint }}</p>
-
-        <h2>События</h2>
-        <div class="events-grid">
-          <button
-            v-for="event in eventTypes"
-            :key="event.type"
-            :disabled="!hasSyncedTime"
-            @click="addEvent(event.type)"
-          >
-            {{ event.label }}
-          </button>
-        </div>
       </div>
     </section>
 
@@ -81,6 +85,39 @@
         <pre>{{ serializedEvents }}</pre>
       </div>
     </section>
+
+    <div v-if="isSettingsOpen" class="settings-overlay" @click.self="isSettingsOpen = false">
+      <section class="settings-modal card" role="dialog" aria-modal="true" aria-label="Настройки">
+        <div class="toolbar">
+          <h2>Настройки</h2>
+          <button class="secondary" @click="isSettingsOpen = false">Закрыть</button>
+        </div>
+
+        <div class="settings-block">
+          <h3>События</h3>
+          <div class="settings-groups">
+            <section v-for="group in eventGroups" :key="`settings-${group.id}`" class="settings-group">
+              <label class="toggle-row group-toggle">
+                <input v-model="groupVisibility[group.id]" type="checkbox" />
+                <span>{{ group.label }}</span>
+              </label>
+
+              <div class="settings-events">
+                <label v-for="event in group.events" :key="`settings-${event.type}`" class="toggle-row event-toggle">
+                  <input
+                    :checked="eventVisibility[event.type]"
+                    type="checkbox"
+                    :disabled="!groupVisibility[group.id]"
+                    @change="setEventVisibility(event.type, $event.target.checked)"
+                  />
+                  <span>{{ event.icon }} {{ event.label }}</span>
+                </label>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -92,6 +129,7 @@ const embedUrl = ref('');
 const urlError = ref('');
 const isSessionStarted = ref(false);
 const playerFrameRef = ref(null);
+const isSettingsOpen = ref(false);
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -100,24 +138,51 @@ const hasSyncedTime = ref(false);
 let syncInterval = null;
 let vkPlayer = null;
 
-const eventTypes = [
-  { type: 'made_2pt', label: '2-очковое попадание', tone: 'positive' },
-  { type: 'made_3pt', label: '3-очковое попадание', tone: 'positive' },
-  { type: 'missed_shot', label: 'Неудачный бросок', tone: 'negative' },
-  { type: 'rebound', label: 'Подбор', tone: 'positive' },
-  { type: 'turnover', label: 'Потеря', tone: 'negative' },
+const eventGroups = [
+  {
+    id: 'shots',
+    label: 'Броски',
+    events: [
+      { type: 'made_2pt', label: '2-очковое', tone: 'positive', icon: '🏀' },
+      { type: 'made_3pt', label: '3-очковое', tone: 'positive', icon: '🎯' },
+      { type: 'missed_shot', label: 'Промах', tone: 'negative', icon: '❌' },
+    ],
+  },
+  {
+    id: 'defense',
+    label: 'Защита',
+    events: [{ type: 'turnover', label: 'Потеря', tone: 'negative', icon: '🚫' }],
+  },
+  {
+    id: 'rebounds',
+    label: 'Подборы',
+    events: [{ type: 'rebound', label: 'Подбор', tone: 'positive', icon: '👐' }],
+  },
 ];
+
+const eventTypes = eventGroups.flatMap((group) => group.events);
+const groupVisibility = ref(Object.fromEntries(eventGroups.map((group) => [group.id, true])));
+const eventVisibility = ref(Object.fromEntries(eventTypes.map((event) => [event.type, true])));
+
+const visibleEventGroups = computed(() =>
+  eventGroups
+    .filter((group) => groupVisibility.value[group.id])
+    .map((group) => ({
+      ...group,
+      events: group.events.filter((event) => eventVisibility.value[event.type]),
+    }))
+    .filter((group) => group.events.length > 0),
+);
 
 const eventMetaByType = Object.fromEntries(eventTypes.map((event) => [event.type, event]));
 const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
-const syncHint = computed(() =>
-  hasSyncedTime.value
-    ? 'Время берется из VK плеера. При клике на событие фиксируется текущий таймкод видео.'
-    : 'Ожидаем синхронизацию с плеером. Запустите видео и нажмите «Обновить время».',
-);
+
+function setEventVisibility(type, isVisible) {
+  eventVisibility.value[type] = isVisible;
+}
 
 function parseVkEmbedUrl(url) {
   try {
@@ -201,7 +266,6 @@ async function requestCurrentTime() {
 
 async function seekTo(timeSec) {
   const safeTime = Math.max(0, Math.floor(timeSec));
-
 
   if (vkPlayer?.seek) {
     try {
