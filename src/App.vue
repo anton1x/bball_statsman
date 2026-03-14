@@ -124,6 +124,7 @@
         <li v-for="event in events" :key="event.id" class="event-item">
           <button class="time-link" @click="seekTo(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
+          <button class="secondary delete-event-button" @click="removeEvent(event.id)">Удалить</button>
         </li>
       </ul>
       <p v-else-if="logsViewMode === 'history'" class="hint">Пока нет событий — нажмите одну из кнопок выше.</p>
@@ -608,7 +609,17 @@ function addEvent(type) {
   });
 }
 
+function removeEvent(eventId) {
+  events.value = events.value.filter((event) => event.id !== eventId);
+}
+
 function clearEvents() {
+  const isConfirmed = window.confirm('Вы точно хотите удалить все события?');
+
+  if (!isConfirmed) {
+    return;
+  }
+
   events.value = [];
 }
 

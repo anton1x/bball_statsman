@@ -314,6 +314,12 @@ button.secondary {
   font-weight: 600;
 }
 
+.delete-event-button {
+  margin-left: auto;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+}
+
 .tone-positive {
   color: #067647;
 }
