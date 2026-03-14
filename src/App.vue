@@ -122,7 +122,7 @@
 
       <ul v-if="logsViewMode === 'history' && events.length" class="event-list">
         <li v-for="event in events" :key="event.id" class="event-item">
-          <button class="time-link" @click="seekTo(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
+          <button class="time-link" @click="seekToEvent(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
           <button class="secondary delete-event-button" @click="removeEvent(event.id)">Удалить</button>
         </li>
@@ -499,6 +499,22 @@ function postPlayerCommand(payload) {
   target.postMessage(JSON.stringify(payload), '*');
 }
 
+async function playVideo() {
+  if (vkPlayer?.play) {
+    try {
+      await vkPlayer.play();
+      return;
+    } catch {
+      // fallback to postMessage API
+    }
+  }
+
+  postPlayerCommand({ type: 'play' });
+  postPlayerCommand({ type: 'vk_player_play' });
+  postPlayerCommand({ method: 'play' });
+  postPlayerCommand({ event: 'command', func: 'play' });
+}
+
 async function requestCurrentTime() {
   if (vkPlayer?.getCurrentTime) {
     try {
@@ -518,7 +534,7 @@ async function requestCurrentTime() {
   postPlayerCommand({ method: 'getCurrentTime' });
 }
 
-async function seekTo(timeSec) {
+async function seekTo(timeSec, shouldPlay = false) {
   const safeTime = Math.max(0, Math.floor(timeSec));
 
   if (vkPlayer?.seek) {
@@ -526,6 +542,11 @@ async function seekTo(timeSec) {
       await vkPlayer.seek(safeTime);
       currentTimeSec.value = safeTime;
       hasSyncedTime.value = true;
+
+      if (shouldPlay) {
+        await playVideo();
+      }
+
       return;
     } catch {
       // fallback to postMessage API
@@ -542,6 +563,15 @@ async function seekTo(timeSec) {
 
   currentTimeSec.value = safeTime;
   requestCurrentTime();
+
+  if (shouldPlay) {
+    await playVideo();
+  }
+}
+
+function seekToEvent(eventTimeSec) {
+  const rewoundTime = Math.max(0, Math.floor(eventTimeSec) - 2);
+  seekTo(rewoundTime, true);
 }
 
 async function onPlayerLoad() {
