@@ -14,7 +14,7 @@
         placeholder="https://vkvideo.ru/video-123_456"
       />
       <p class="hint">Поддерживаются ссылки вида <code>.../video-oid_id</code>.</p>
-      <button :disabled="!canStart" @click="startSession">Открыть матч</button>
+      <button :disabled="!canStart" @click="startSession()">Открыть матч</button>
       <p v-if="urlError" class="error">{{ urlError }}</p>
 
       <section v-if="savedVideos.length" class="saved-videos">
@@ -314,10 +314,12 @@ function setEventVisibility(type, isVisible) {
 }
 
 function normalizeVideoUrl(url) {
+  const safeUrl = typeof url === 'string' ? url : '';
+
   try {
-    return new URL(url).toString();
+    return new URL(safeUrl).toString();
   } catch {
-    return url.trim();
+    return safeUrl.trim();
   }
 }
 
