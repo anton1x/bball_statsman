@@ -461,3 +461,34 @@ pre {
   color: #98a2b3;
   font-size: 0.85rem;
 }
+
+.games-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.games-list-item {
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.games-filter-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.games-filter-inline select {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0.38rem 0.5rem;
+  background: #fff;
+  color: #182230;
+}

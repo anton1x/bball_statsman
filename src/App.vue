@@ -102,6 +102,16 @@
         </div>
         <p class="hint" v-if="activeGame">Сейчас идет игра #{{ activeGame.number }} (старт {{ formatSeconds(activeGame.startSec) }}).</p>
         <p class="hint" v-else>Нажмите «Начало игры», чтобы отметить следующий игровой отрезок.</p>
+
+        <ul v-if="games.length" class="games-list">
+          <li v-for="game in games" :key="game.id" class="games-list-item">
+            <button class="time-link" @click="seekToGame(game)">{{ formatSeconds(game.startSec) }}</button>
+            <span class="event-name">Игра #{{ game.number }}</span>
+            <span class="event-game-label" v-if="game.endSec !== null">до {{ formatSeconds(game.endSec) }}</span>
+            <span class="event-game-label" v-else>в процессе</span>
+            <button class="secondary delete-event-button" @click="removeGame(game.number)">Удалить</button>
+          </li>
+        </ul>
       </div>
     </section>
 
@@ -127,20 +137,17 @@
               Статистика
             </button>
           </div>
-          <button class="secondary" @click="isGamesFilterOpen = !isGamesFilterOpen" :disabled="!games.length">Фильтр</button>
+          <div class="games-filter-inline" v-if="games.length">
+            <button class="secondary" @click="selectPreviousGameFilter" :disabled="!canSelectPreviousGameFilter">←</button>
+            <select v-model="selectedGameFilter" aria-label="Фильтр по играм">
+              <option value="all">Все игры</option>
+              <option v-for="game in games" :key="`filter-game-${game.number}`" :value="String(game.number)">Игра {{ game.number }}</option>
+            </select>
+            <button class="secondary" @click="selectNextGameFilter" :disabled="!canSelectNextGameFilter">→</button>
+          </div>
           <button class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
       </div>
-
-      <section v-if="isGamesFilterOpen && games.length" class="games-filter card">
-        <h3>Показывать игры</h3>
-        <div class="games-filter-list">
-          <label v-for="game in games" :key="`filter-game-${game.number}`" class="toggle-row">
-            <input :checked="selectedGameNumbers.includes(game.number)" type="checkbox" @change="toggleGameFilter(game.number, $event.target.checked)" />
-            <span>Игра #{{ game.number }}</span>
-          </label>
-        </div>
-      </section>
 
       <ul v-if="logsViewMode === 'history' && filteredEvents.length" class="event-list">
         <li v-for="event in filteredEvents" :key="event.id" class="event-item">
@@ -228,8 +235,7 @@ const isSettingsOpen = ref(false);
 const logsViewMode = ref('history');
 const activeVideoUrl = ref('');
 const gameRanges = ref([]);
-const selectedGameNumbers = ref([]);
-const isGamesFilterOpen = ref(false);
+const selectedGameFilter = ref('all');
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -323,7 +329,7 @@ const filteredEvents = computed(() =>
       return true;
     }
 
-    return selectedGameNumbers.value.includes(gameNumber);
+    return selectedGameFilter.value === 'all' || selectedGameFilter.value === String(gameNumber);
   }),
 );
 
@@ -431,7 +437,7 @@ function persistVideoState() {
       settings: {
         groupVisibility: groupVisibility.value,
         eventVisibility: eventVisibility.value,
-        selectedGameNumbers: selectedGameNumbers.value,
+        selectedGameFilter: selectedGameFilter.value,
       },
     };
 
@@ -475,18 +481,15 @@ function applyStoredVideoState(videoState) {
     ...(videoState?.settings?.eventVisibility || {}),
   };
 
-  const availableGameNumbers = gameRanges.value.map((_, index) => index + 1);
-  const storedFilter = Array.isArray(videoState?.settings?.selectedGameNumbers)
-    ? videoState.settings.selectedGameNumbers
-    : availableGameNumbers;
-  selectedGameNumbers.value = storedFilter.filter((number) => availableGameNumbers.includes(number));
+  const availableGameIds = games.value.map((game) => String(game.number));
+  const storedFilter = String(videoState?.settings?.selectedGameFilter || 'all');
+  selectedGameFilter.value = storedFilter === 'all' || availableGameIds.includes(storedFilter) ? storedFilter : 'all';
 }
 
 function resetVideoState() {
   events.value = [];
   gameRanges.value = [];
-  selectedGameNumbers.value = [];
-  isGamesFilterOpen.value = false;
+  selectedGameFilter.value = 'all';
   groupVisibility.value = defaultGroupVisibility();
   eventVisibility.value = defaultEventVisibility();
 }
@@ -536,10 +539,9 @@ function startSession(selectedUrl = videoUrl.value) {
   hasSyncedTime.value = false;
   animatedEvent.value = null;
   applyStoredVideoState(loadVideoState(normalizedUrl));
-  if (!selectedGameNumbers.value.length) {
-    selectedGameNumbers.value = games.value.map((game) => game.number);
+  if (selectedGameFilter.value !== 'all' && !games.value.some((game) => String(game.number) === selectedGameFilter.value)) {
+    selectedGameFilter.value = 'all';
   }
-  isGamesFilterOpen.value = false;
   isSessionStarted.value = true;
   persistVideoState();
 }
@@ -735,8 +737,8 @@ function toggleGameBoundary() {
     endSec: null,
   });
 
-  selectedGameNumbers.value = games.value.map((game) => game.number);
 }
+
 
 function eventGameLabel(timeSec) {
   const second = Math.max(0, Math.floor(timeSec));
@@ -749,13 +751,34 @@ function eventGameLabel(timeSec) {
   return game?.number || null;
 }
 
-function toggleGameFilter(gameNumber, checked) {
-  if (checked) {
-    selectedGameNumbers.value = [...new Set([...selectedGameNumbers.value, gameNumber])].sort((a, b) => a - b);
+function seekToGame(game) {
+  const rewoundTime = Math.max(0, game.startSec - 2);
+  seekTo(rewoundTime, true);
+}
+
+function removeGame(gameNumber) {
+  gameRanges.value = gameRanges.value.filter((_, index) => index !== gameNumber - 1);
+}
+
+const gameFilterOptions = computed(() => ['all', ...games.value.map((game) => String(game.number))]);
+const selectedGameFilterIndex = computed(() => gameFilterOptions.value.indexOf(selectedGameFilter.value));
+const canSelectPreviousGameFilter = computed(() => selectedGameFilterIndex.value > 0);
+const canSelectNextGameFilter = computed(() => selectedGameFilterIndex.value >= 0 && selectedGameFilterIndex.value < gameFilterOptions.value.length - 1);
+
+function selectPreviousGameFilter() {
+  if (!canSelectPreviousGameFilter.value) {
     return;
   }
 
-  selectedGameNumbers.value = selectedGameNumbers.value.filter((number) => number !== gameNumber);
+  selectedGameFilter.value = gameFilterOptions.value[selectedGameFilterIndex.value - 1];
+}
+
+function selectNextGameFilter() {
+  if (!canSelectNextGameFilter.value) {
+    return;
+  }
+
+  selectedGameFilter.value = gameFilterOptions.value[selectedGameFilterIndex.value + 1];
 }
 
 function clearEvents() {
@@ -834,7 +857,7 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 });
 
 watch(
-  [events, gameRanges, selectedGameNumbers, groupVisibility, eventVisibility],
+  [events, gameRanges, selectedGameFilter, groupVisibility, eventVisibility],
   () => {
     if (!isSessionStarted.value) {
       return;
@@ -848,11 +871,10 @@ watch(
 watch(
   games,
   (nextGames) => {
-    const available = nextGames.map((game) => game.number);
-    selectedGameNumbers.value = selectedGameNumbers.value.filter((number) => available.includes(number));
+    const available = nextGames.map((game) => String(game.number));
 
-    if (!selectedGameNumbers.value.length && available.length) {
-      selectedGameNumbers.value = available;
+    if (selectedGameFilter.value !== 'all' && !available.includes(selectedGameFilter.value)) {
+      selectedGameFilter.value = 'all';
     }
   },
   { deep: true },
