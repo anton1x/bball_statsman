@@ -92,6 +92,17 @@
           Не удалось собрать embed-ссылку. Проверьте формат URL и попробуйте снова.
         </p>
       </div>
+
+      <div class="card game-marker-card">
+        <div class="toolbar">
+          <h3>Игры внутри видео</h3>
+          <button class="secondary" :disabled="!hasSyncedTime" @click="toggleGameBoundary">
+            {{ activeGame ? 'Конец игры' : 'Начало игры' }}
+          </button>
+        </div>
+        <p class="hint" v-if="activeGame">Сейчас идет игра #{{ activeGame.number }} (старт {{ formatSeconds(activeGame.startSec) }}).</p>
+        <p class="hint" v-else>Нажмите «Начало игры», чтобы отметить следующий игровой отрезок.</p>
+      </div>
     </section>
 
     <section v-if="isSessionStarted" class="card logs-card">
@@ -116,18 +127,30 @@
               Статистика
             </button>
           </div>
+          <button class="secondary" @click="isGamesFilterOpen = !isGamesFilterOpen" :disabled="!games.length">Фильтр</button>
           <button class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
       </div>
 
-      <ul v-if="logsViewMode === 'history' && events.length" class="event-list">
-        <li v-for="event in events" :key="event.id" class="event-item">
+      <section v-if="isGamesFilterOpen && games.length" class="games-filter card">
+        <h3>Показывать игры</h3>
+        <div class="games-filter-list">
+          <label v-for="game in games" :key="`filter-game-${game.number}`" class="toggle-row">
+            <input :checked="selectedGameNumbers.includes(game.number)" type="checkbox" @change="toggleGameFilter(game.number, $event.target.checked)" />
+            <span>Игра #{{ game.number }}</span>
+          </label>
+        </div>
+      </section>
+
+      <ul v-if="logsViewMode === 'history' && filteredEvents.length" class="event-list">
+        <li v-for="event in filteredEvents" :key="event.id" class="event-item">
           <button class="time-link" @click="seekToEvent(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
+          <span v-if="eventGameLabel(event.videoTimeSec)" class="event-game-label">игра #{{ eventGameLabel(event.videoTimeSec) }}</span>
           <button class="secondary delete-event-button" @click="removeEvent(event.id)">Удалить</button>
         </li>
       </ul>
-      <p v-else-if="logsViewMode === 'history'" class="hint">Пока нет событий — нажмите одну из кнопок выше.</p>
+      <p v-else-if="logsViewMode === 'history'" class="hint">Пока нет событий для выбранных игр.</p>
 
       <div v-else class="stats-grid">
         <article class="stat-card">
@@ -204,6 +227,9 @@ const playerFrameRef = ref(null);
 const isSettingsOpen = ref(false);
 const logsViewMode = ref('history');
 const activeVideoUrl = ref('');
+const gameRanges = ref([]);
+const selectedGameNumbers = ref([]);
+const isGamesFilterOpen = ref(false);
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -277,8 +303,32 @@ const savedVideos = ref(loadSavedVideos());
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
+const games = computed(() =>
+  gameRanges.value
+    .filter((game) => typeof game?.startSec === 'number')
+    .map((game, index) => ({
+      id: game.id || `game-${index + 1}`,
+      number: index + 1,
+      startSec: Math.max(0, Math.floor(game.startSec)),
+      endSec: typeof game.endSec === 'number' ? Math.max(0, Math.floor(game.endSec)) : null,
+    })),
+);
+
+const activeGame = computed(() => games.value.find((game) => game.endSec === null) || null);
+
+const filteredEvents = computed(() =>
+  events.value.filter((event) => {
+    const gameNumber = eventGameLabel(event.videoTimeSec);
+    if (!gameNumber) {
+      return true;
+    }
+
+    return selectedGameNumbers.value.includes(gameNumber);
+  }),
+);
+
 const summaryStats = computed(() =>
-  events.value.reduce(
+  filteredEvents.value.reduce(
     (acc, event) => {
       if (event.type === 'made_2pt') {
         acc.points += 2;
@@ -377,9 +427,11 @@ function persistVideoState() {
       url: activeVideoUrl.value,
       updatedAt: Date.now(),
       events: events.value,
+      games: gameRanges.value,
       settings: {
         groupVisibility: groupVisibility.value,
         eventVisibility: eventVisibility.value,
+        selectedGameNumbers: selectedGameNumbers.value,
       },
     };
 
@@ -412,6 +464,7 @@ function removeSavedVideo(videoUrlToRemove) {
 
 function applyStoredVideoState(videoState) {
   events.value = Array.isArray(videoState?.events) ? videoState.events : [];
+  gameRanges.value = Array.isArray(videoState?.games) ? videoState.games : [];
 
   groupVisibility.value = {
     ...defaultGroupVisibility(),
@@ -421,10 +474,19 @@ function applyStoredVideoState(videoState) {
     ...defaultEventVisibility(),
     ...(videoState?.settings?.eventVisibility || {}),
   };
+
+  const availableGameNumbers = gameRanges.value.map((_, index) => index + 1);
+  const storedFilter = Array.isArray(videoState?.settings?.selectedGameNumbers)
+    ? videoState.settings.selectedGameNumbers
+    : availableGameNumbers;
+  selectedGameNumbers.value = storedFilter.filter((number) => availableGameNumbers.includes(number));
 }
 
 function resetVideoState() {
   events.value = [];
+  gameRanges.value = [];
+  selectedGameNumbers.value = [];
+  isGamesFilterOpen.value = false;
   groupVisibility.value = defaultGroupVisibility();
   eventVisibility.value = defaultEventVisibility();
 }
@@ -474,6 +536,10 @@ function startSession(selectedUrl = videoUrl.value) {
   hasSyncedTime.value = false;
   animatedEvent.value = null;
   applyStoredVideoState(loadVideoState(normalizedUrl));
+  if (!selectedGameNumbers.value.length) {
+    selectedGameNumbers.value = games.value.map((game) => game.number);
+  }
+  isGamesFilterOpen.value = false;
   isSessionStarted.value = true;
   persistVideoState();
 }
@@ -643,6 +709,55 @@ function removeEvent(eventId) {
   events.value = events.value.filter((event) => event.id !== eventId);
 }
 
+function toggleGameBoundary() {
+  if (!hasSyncedTime.value) {
+    return;
+  }
+
+  const openGame = activeGame.value;
+  if (openGame) {
+    gameRanges.value = gameRanges.value.map((game, index) => {
+      if (index !== openGame.number - 1) {
+        return game;
+      }
+
+      return {
+        ...game,
+        endSec: Math.max(openGame.startSec, currentTimeSec.value),
+      };
+    });
+    return;
+  }
+
+  gameRanges.value.push({
+    id: crypto.randomUUID(),
+    startSec: currentTimeSec.value,
+    endSec: null,
+  });
+
+  selectedGameNumbers.value = games.value.map((game) => game.number);
+}
+
+function eventGameLabel(timeSec) {
+  const second = Math.max(0, Math.floor(timeSec));
+  const game = games.value.find((candidate) => {
+    const isAfterStart = second >= candidate.startSec;
+    const isBeforeEnd = candidate.endSec === null ? true : second <= candidate.endSec;
+    return isAfterStart && isBeforeEnd;
+  });
+
+  return game?.number || null;
+}
+
+function toggleGameFilter(gameNumber, checked) {
+  if (checked) {
+    selectedGameNumbers.value = [...new Set([...selectedGameNumbers.value, gameNumber])].sort((a, b) => a - b);
+    return;
+  }
+
+  selectedGameNumbers.value = selectedGameNumbers.value.filter((number) => number !== gameNumber);
+}
+
 function clearEvents() {
   const isConfirmed = window.confirm('Вы точно хотите удалить все события?');
 
@@ -719,13 +834,26 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 });
 
 watch(
-  [events, groupVisibility, eventVisibility],
+  [events, gameRanges, selectedGameNumbers, groupVisibility, eventVisibility],
   () => {
     if (!isSessionStarted.value) {
       return;
     }
 
     persistVideoState();
+  },
+  { deep: true },
+);
+
+watch(
+  games,
+  (nextGames) => {
+    const available = nextGames.map((game) => game.number);
+    selectedGameNumbers.value = selectedGameNumbers.value.filter((number) => available.includes(number));
+
+    if (!selectedGameNumbers.value.length && available.length) {
+      selectedGameNumbers.value = available;
+    }
   },
   { deep: true },
 );

@@ -429,3 +429,35 @@ pre {
   color: #667085;
   font-size: 0.85rem;
 }
+
+.game-marker-card {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.game-marker-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.games-filter {
+  margin: 0.8rem 0;
+  padding: 0.8rem;
+}
+
+.games-filter h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.games-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+}
+
+.event-game-label {
+  color: #98a2b3;
+  font-size: 0.85rem;
+}
