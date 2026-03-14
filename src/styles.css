@@ -373,3 +373,53 @@ pre {
   color: #b42318;
   margin: 0;
 }
+.saved-videos {
+  margin-top: 0.8rem;
+  border-top: 1px solid #eaecf0;
+  padding-top: 0.8rem;
+}
+
+.saved-videos h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.saved-videos-list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.saved-video-item {
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  padding: 0.6rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.saved-video-meta {
+  min-width: 0;
+}
+
+.saved-video-link {
+  border: none;
+  background: transparent;
+  color: #175cd3;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  font-weight: 600;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.saved-video-details {
+  margin: 0.25rem 0 0;
+  color: #667085;
+  font-size: 0.85rem;
+}

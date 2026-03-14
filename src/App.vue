@@ -16,6 +16,23 @@
       <p class="hint">Поддерживаются ссылки вида <code>.../video-oid_id</code>.</p>
       <button :disabled="!canStart" @click="startSession">Открыть матч</button>
       <p v-if="urlError" class="error">{{ urlError }}</p>
+
+      <section v-if="savedVideos.length" class="saved-videos">
+        <div class="toolbar">
+          <h3>Ранее добавленные видео</h3>
+        </div>
+        <ul class="saved-videos-list">
+          <li v-for="video in savedVideos" :key="video.url" class="saved-video-item">
+            <div class="saved-video-meta">
+              <button class="saved-video-link" @click="startSession(video.url)">{{ video.url }}</button>
+              <p class="saved-video-details">
+                Событий: {{ video.eventsCount }} · Обновлено: {{ formatDateTime(video.updatedAt) }}
+              </p>
+            </div>
+            <button class="secondary" @click="removeSavedVideo(video.url)">Удалить</button>
+          </li>
+        </ul>
+      </section>
     </section>
 
     <section v-else class="main-grid">
@@ -185,6 +202,7 @@ const isSessionStarted = ref(false);
 const playerFrameRef = ref(null);
 const isSettingsOpen = ref(false);
 const logsViewMode = ref('history');
+const activeVideoUrl = ref('');
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -229,8 +247,18 @@ const eventGroups = [
 ];
 
 const eventTypes = eventGroups.flatMap((group) => group.events);
-const groupVisibility = ref(Object.fromEntries(eventGroups.map((group) => [group.id, true])));
-const eventVisibility = ref(Object.fromEntries(eventTypes.map((event) => [event.type, true])));
+const storageKey = 'bball-statsman:v1';
+
+function defaultGroupVisibility() {
+  return Object.fromEntries(eventGroups.map((group) => [group.id, true]));
+}
+
+function defaultEventVisibility() {
+  return Object.fromEntries(eventTypes.map((event) => [event.type, true]));
+}
+
+const groupVisibility = ref(defaultGroupVisibility());
+const eventVisibility = ref(defaultEventVisibility());
 
 const visibleEventGroups = computed(() =>
   eventGroups
@@ -244,6 +272,7 @@ const visibleEventGroups = computed(() =>
 
 const eventMetaByType = Object.fromEntries(eventTypes.map((event) => [event.type, event]));
 const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
+const savedVideos = ref(loadSavedVideos());
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
@@ -284,6 +313,119 @@ function setEventVisibility(type, isVisible) {
   eventVisibility.value[type] = isVisible;
 }
 
+function normalizeVideoUrl(url) {
+  try {
+    return new URL(url).toString();
+  } catch {
+    return url.trim();
+  }
+}
+
+function loadSavedVideos() {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.videos || typeof parsed.videos !== 'object') {
+      return [];
+    }
+
+    return Object.values(parsed.videos)
+      .filter((video) => typeof video?.url === 'string')
+      .map((video) => ({
+        url: video.url,
+        eventsCount: Array.isArray(video.events) ? video.events.length : 0,
+        updatedAt: typeof video.updatedAt === 'number' ? video.updatedAt : 0,
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch {
+    return [];
+  }
+}
+
+function loadVideoState(videoUrlToLoad) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed?.videos?.[videoUrlToLoad] || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistVideoState() {
+  if (!activeVideoUrl.value) {
+    return;
+  }
+
+  try {
+    const raw = localStorage.getItem(storageKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const videos = parsed?.videos && typeof parsed.videos === 'object' ? parsed.videos : {};
+
+    videos[activeVideoUrl.value] = {
+      url: activeVideoUrl.value,
+      updatedAt: Date.now(),
+      events: events.value,
+      settings: {
+        groupVisibility: groupVisibility.value,
+        eventVisibility: eventVisibility.value,
+      },
+    };
+
+    localStorage.setItem(storageKey, JSON.stringify({ videos }));
+    savedVideos.value = loadSavedVideos();
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function removeSavedVideo(videoUrlToRemove) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) {
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.videos || typeof parsed.videos !== 'object') {
+      return;
+    }
+
+    delete parsed.videos[videoUrlToRemove];
+    localStorage.setItem(storageKey, JSON.stringify({ videos: parsed.videos }));
+    savedVideos.value = loadSavedVideos();
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function applyStoredVideoState(videoState) {
+  events.value = Array.isArray(videoState?.events) ? videoState.events : [];
+
+  groupVisibility.value = {
+    ...defaultGroupVisibility(),
+    ...(videoState?.settings?.groupVisibility || {}),
+  };
+  eventVisibility.value = {
+    ...defaultEventVisibility(),
+    ...(videoState?.settings?.eventVisibility || {}),
+  };
+}
+
+function resetVideoState() {
+  events.value = [];
+  groupVisibility.value = defaultGroupVisibility();
+  eventVisibility.value = defaultEventVisibility();
+}
+
 function parseVkEmbedUrl(url) {
   try {
     const parsed = new URL(url);
@@ -312,8 +454,9 @@ function parseVkEmbedUrl(url) {
   }
 }
 
-function startSession() {
-  const parsedUrl = parseVkEmbedUrl(videoUrl.value);
+function startSession(selectedUrl = videoUrl.value) {
+  const normalizedUrl = normalizeVideoUrl(selectedUrl);
+  const parsedUrl = parseVkEmbedUrl(normalizedUrl);
 
   if (!parsedUrl) {
     urlError.value = 'Не удалось распознать ссылку. Нужен URL с фрагментом video-oid_id.';
@@ -321,21 +464,27 @@ function startSession() {
   }
 
   urlError.value = '';
+  activeVideoUrl.value = normalizedUrl;
+  videoUrl.value = normalizedUrl;
   embedUrl.value = parsedUrl;
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
   animatedEvent.value = null;
+  applyStoredVideoState(loadVideoState(normalizedUrl));
   isSessionStarted.value = true;
+  persistVideoState();
 }
 
 function resetSession() {
   stopSync();
   vkPlayer = null;
   isSessionStarted.value = false;
+  activeVideoUrl.value = '';
   embedUrl.value = '';
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
   animatedEvent.value = null;
+  resetVideoState();
 }
 
 function postPlayerCommand(payload) {
@@ -507,6 +656,17 @@ function formatSeconds(total) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+function formatDateTime(timestamp) {
+  if (!timestamp) {
+    return '—';
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(timestamp);
+}
+
 watch(currentTimeSec, (nextSecond, previousSecond) => {
   if (!hasSyncedTime.value || nextSecond === previousSecond) {
     return;
@@ -514,6 +674,18 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 
   triggerEventAnimationForSecond(nextSecond);
 });
+
+watch(
+  [events, groupVisibility, eventVisibility],
+  () => {
+    if (!isSessionStarted.value) {
+      return;
+    }
+
+    persistVideoState();
+  },
+  { deep: true },
+);
 
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
