@@ -93,6 +93,9 @@
         </p>
       </div>
 
+    </section>
+
+    <section v-if="isSessionStarted" class="logs-layout">
       <div class="card game-marker-card">
         <div class="toolbar">
           <h3>Игры внутри видео</h3>
@@ -113,9 +116,8 @@
           </li>
         </ul>
       </div>
-    </section>
 
-    <section v-if="isSessionStarted" class="card logs-card">
+      <section class="card logs-card">
       <div class="toolbar">
         <h2>{{ logsViewMode === 'history' ? 'История событий' : 'Статистика' }}</h2>
         <div class="toolbar-actions">
@@ -186,6 +188,7 @@
         <h3>Debug: JSON для отправки на backend</h3>
         <pre>{{ serializedEvents }}</pre>
       </div>
+    </section>
     </section>
 
     <div v-if="isSettingsOpen" class="settings-overlay" @click.self="isSettingsOpen = false">
@@ -324,12 +327,12 @@ const activeGame = computed(() => games.value.find((game) => game.endSec === nul
 
 const filteredEvents = computed(() =>
   events.value.filter((event) => {
-    const gameNumber = eventGameLabel(event.videoTimeSec);
-    if (!gameNumber) {
+    if (selectedGameFilter.value === 'all') {
       return true;
     }
 
-    return selectedGameFilter.value === 'all' || selectedGameFilter.value === String(gameNumber);
+    const gameNumber = eventGameLabel(event.videoTimeSec);
+    return String(gameNumber) === selectedGameFilter.value;
   }),
 );
 

@@ -284,6 +284,20 @@ button.secondary {
   margin-top: 1rem;
 }
 
+.logs-layout {
+  display: grid;
+  grid-template-columns: 40% 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .logs-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .event-list {
   list-style: none;
   padding: 0;
@@ -431,7 +445,7 @@ pre {
 }
 
 .game-marker-card {
-  margin-top: 1rem;
+  margin-top: 0;
   display: grid;
   gap: 0.6rem;
 }
@@ -441,21 +455,6 @@ pre {
   font-size: 1rem;
 }
 
-.games-filter {
-  margin: 0.8rem 0;
-  padding: 0.8rem;
-}
-
-.games-filter h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-}
-
-.games-filter-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem 1rem;
-}
 
 .event-game-label {
   color: #98a2b3;
