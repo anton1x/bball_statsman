@@ -284,6 +284,24 @@ button.secondary {
   margin-top: 1rem;
 }
 
+.logs-title {
+  margin: 0 0 0.7rem;
+}
+
+.logs-layout {
+  display: grid;
+  grid-template-columns: 40% 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .logs-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .event-list {
   list-style: none;
   padding: 0;
@@ -312,6 +330,12 @@ button.secondary {
 
 .event-name {
   font-weight: 600;
+}
+
+.delete-event-button {
+  margin-left: auto;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
 }
 
 .tone-positive {
@@ -372,4 +396,102 @@ pre {
 .error {
   color: #b42318;
   margin: 0;
+}
+.saved-videos {
+  margin-top: 0.8rem;
+  border-top: 1px solid #eaecf0;
+  padding-top: 0.8rem;
+}
+
+.saved-videos h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.saved-videos-list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.saved-video-item {
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  padding: 0.6rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.saved-video-meta {
+  min-width: 0;
+}
+
+.saved-video-link {
+  border: none;
+  background: transparent;
+  color: #175cd3;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  font-weight: 600;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.saved-video-details {
+  margin: 0.25rem 0 0;
+  color: #667085;
+  font-size: 0.85rem;
+}
+
+.game-marker-card {
+  margin-top: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.game-marker-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+
+.event-game-label {
+  color: #98a2b3;
+  font-size: 0.85rem;
+}
+
+.games-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.games-list-item {
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.games-filter-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.games-filter-inline select {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0.38rem 0.5rem;
+  background: #fff;
+  color: #182230;
 }

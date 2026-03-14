@@ -14,8 +14,25 @@
         placeholder="https://vkvideo.ru/video-123_456"
       />
       <p class="hint">Поддерживаются ссылки вида <code>.../video-oid_id</code>.</p>
-      <button :disabled="!canStart" @click="startSession">Открыть матч</button>
+      <button :disabled="!canStart" @click="startSession()">Открыть матч</button>
       <p v-if="urlError" class="error">{{ urlError }}</p>
+
+      <section v-if="savedVideos.length" class="saved-videos">
+        <div class="toolbar">
+          <h3>Ранее добавленные видео</h3>
+        </div>
+        <ul class="saved-videos-list">
+          <li v-for="video in savedVideos" :key="video.url" class="saved-video-item">
+            <div class="saved-video-meta">
+              <button class="saved-video-link" @click="startSession(video.url)">{{ video.url }}</button>
+              <p class="saved-video-details">
+                Событий: {{ video.eventsCount }} · Обновлено: {{ formatDateTime(video.updatedAt) }}
+              </p>
+            </div>
+            <button class="secondary" @click="removeSavedVideo(video.url)">Удалить</button>
+          </li>
+        </ul>
+      </section>
     </section>
 
     <section v-else class="main-grid">
@@ -75,11 +92,34 @@
           Не удалось собрать embed-ссылку. Проверьте формат URL и попробуйте снова.
         </p>
       </div>
+
     </section>
 
-    <section v-if="isSessionStarted" class="card logs-card">
+    <section v-if="isSessionStarted" class="logs-layout">
+      <div class="card game-marker-card">
+        <div class="toolbar">
+          <h3>Игры внутри видео</h3>
+          <button class="secondary" :disabled="!hasSyncedTime" @click="toggleGameBoundary">
+            {{ activeGame ? 'Конец игры' : 'Начало игры' }}
+          </button>
+        </div>
+        <p class="hint" v-if="activeGame">Сейчас идет игра #{{ activeGame.number }} (старт {{ formatSeconds(activeGame.startSec) }}).</p>
+        <p class="hint" v-else>Нажмите «Начало игры», чтобы отметить следующий игровой отрезок.</p>
+
+        <ul v-if="games.length" class="games-list">
+          <li v-for="game in games" :key="game.id" class="games-list-item">
+            <button class="time-link" @click="seekToGame(game)">{{ formatSeconds(game.startSec) }}</button>
+            <span class="event-name">Игра #{{ game.number }}</span>
+            <span class="event-game-label" v-if="game.endSec !== null">до {{ formatSeconds(game.endSec) }}</span>
+            <span class="event-game-label" v-else>в процессе</span>
+            <button class="secondary delete-event-button" @click="removeGame(game.number)">Удалить</button>
+          </li>
+        </ul>
+      </div>
+
+      <section class="card logs-card">
+      <h2 class="logs-title">{{ logsViewMode === 'history' ? 'История событий' : 'Статистика' }}</h2>
       <div class="toolbar">
-        <h2>{{ logsViewMode === 'history' ? 'История событий' : 'Статистика' }}</h2>
         <div class="toolbar-actions">
           <div class="view-switch" role="tablist" aria-label="Переключение вида блока событий">
             <button
@@ -99,17 +139,27 @@
               Статистика
             </button>
           </div>
-          <button class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
+          <div class="games-filter-inline" v-if="games.length">
+            <button class="secondary" @click="selectPreviousGameFilter" :disabled="!canSelectPreviousGameFilter">←</button>
+            <select v-model="selectedGameFilter" aria-label="Фильтр по играм">
+              <option value="all">Все игры</option>
+              <option v-for="game in games" :key="`filter-game-${game.number}`" :value="String(game.number)">Игра {{ game.number }}</option>
+            </select>
+            <button class="secondary" @click="selectNextGameFilter" :disabled="!canSelectNextGameFilter">→</button>
+          </div>
+          <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
       </div>
 
-      <ul v-if="logsViewMode === 'history' && events.length" class="event-list">
-        <li v-for="event in events" :key="event.id" class="event-item">
-          <button class="time-link" @click="seekTo(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
+      <ul v-if="logsViewMode === 'history' && filteredEvents.length" class="event-list">
+        <li v-for="event in filteredEvents" :key="event.id" class="event-item">
+          <button class="time-link" @click="seekToEvent(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
+          <span v-if="eventGameLabel(event.videoTimeSec)" class="event-game-label">игра #{{ eventGameLabel(event.videoTimeSec) }}</span>
+          <button class="secondary delete-event-button" @click="removeEvent(event.id)">Удалить</button>
         </li>
       </ul>
-      <p v-else-if="logsViewMode === 'history'" class="hint">Пока нет событий — нажмите одну из кнопок выше.</p>
+      <p v-else-if="logsViewMode === 'history'" class="hint">Пока нет событий для выбранных игр.</p>
 
       <div v-else class="stats-grid">
         <article class="stat-card">
@@ -138,6 +188,7 @@
         <h3>Debug: JSON для отправки на backend</h3>
         <pre>{{ serializedEvents }}</pre>
       </div>
+    </section>
     </section>
 
     <div v-if="isSettingsOpen" class="settings-overlay" @click.self="isSettingsOpen = false">
@@ -185,6 +236,9 @@ const isSessionStarted = ref(false);
 const playerFrameRef = ref(null);
 const isSettingsOpen = ref(false);
 const logsViewMode = ref('history');
+const activeVideoUrl = ref('');
+const gameRanges = ref([]);
+const selectedGameFilter = ref('all');
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -229,8 +283,18 @@ const eventGroups = [
 ];
 
 const eventTypes = eventGroups.flatMap((group) => group.events);
-const groupVisibility = ref(Object.fromEntries(eventGroups.map((group) => [group.id, true])));
-const eventVisibility = ref(Object.fromEntries(eventTypes.map((event) => [event.type, true])));
+const storageKey = 'bball-statsman:v1';
+
+function defaultGroupVisibility() {
+  return Object.fromEntries(eventGroups.map((group) => [group.id, true]));
+}
+
+function defaultEventVisibility() {
+  return Object.fromEntries(eventTypes.map((event) => [event.type, true]));
+}
+
+const groupVisibility = ref(defaultGroupVisibility());
+const eventVisibility = ref(defaultEventVisibility());
 
 const visibleEventGroups = computed(() =>
   eventGroups
@@ -244,11 +308,36 @@ const visibleEventGroups = computed(() =>
 
 const eventMetaByType = Object.fromEntries(eventTypes.map((event) => [event.type, event]));
 const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
+const savedVideos = ref(loadSavedVideos());
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
+const games = computed(() =>
+  gameRanges.value
+    .filter((game) => typeof game?.startSec === 'number')
+    .map((game, index) => ({
+      id: game.id || `game-${index + 1}`,
+      number: index + 1,
+      startSec: Math.max(0, Math.floor(game.startSec)),
+      endSec: typeof game.endSec === 'number' ? Math.max(0, Math.floor(game.endSec)) : null,
+    })),
+);
+
+const activeGame = computed(() => games.value.find((game) => game.endSec === null) || null);
+
+const filteredEvents = computed(() =>
+  events.value.filter((event) => {
+    if (selectedGameFilter.value === 'all') {
+      return true;
+    }
+
+    const gameNumber = eventGameLabel(event.videoTimeSec);
+    return String(gameNumber) === selectedGameFilter.value;
+  }),
+);
+
 const summaryStats = computed(() =>
-  events.value.reduce(
+  filteredEvents.value.reduce(
     (acc, event) => {
       if (event.type === 'made_2pt') {
         acc.points += 2;
@@ -284,6 +373,130 @@ function setEventVisibility(type, isVisible) {
   eventVisibility.value[type] = isVisible;
 }
 
+function normalizeVideoUrl(url) {
+  const safeUrl = typeof url === 'string' ? url : '';
+
+  try {
+    return new URL(safeUrl).toString();
+  } catch {
+    return safeUrl.trim();
+  }
+}
+
+function loadSavedVideos() {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.videos || typeof parsed.videos !== 'object') {
+      return [];
+    }
+
+    return Object.values(parsed.videos)
+      .filter((video) => typeof video?.url === 'string')
+      .map((video) => ({
+        url: video.url,
+        eventsCount: Array.isArray(video.events) ? video.events.length : 0,
+        updatedAt: typeof video.updatedAt === 'number' ? video.updatedAt : 0,
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch {
+    return [];
+  }
+}
+
+function loadVideoState(videoUrlToLoad) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed?.videos?.[videoUrlToLoad] || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistVideoState() {
+  if (!activeVideoUrl.value) {
+    return;
+  }
+
+  try {
+    const raw = localStorage.getItem(storageKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const videos = parsed?.videos && typeof parsed.videos === 'object' ? parsed.videos : {};
+
+    videos[activeVideoUrl.value] = {
+      url: activeVideoUrl.value,
+      updatedAt: Date.now(),
+      events: events.value,
+      games: gameRanges.value,
+      settings: {
+        groupVisibility: groupVisibility.value,
+        eventVisibility: eventVisibility.value,
+        selectedGameFilter: selectedGameFilter.value,
+      },
+    };
+
+    localStorage.setItem(storageKey, JSON.stringify({ videos }));
+    savedVideos.value = loadSavedVideos();
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function removeSavedVideo(videoUrlToRemove) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) {
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.videos || typeof parsed.videos !== 'object') {
+      return;
+    }
+
+    delete parsed.videos[videoUrlToRemove];
+    localStorage.setItem(storageKey, JSON.stringify({ videos: parsed.videos }));
+    savedVideos.value = loadSavedVideos();
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function applyStoredVideoState(videoState) {
+  events.value = Array.isArray(videoState?.events) ? videoState.events : [];
+  gameRanges.value = Array.isArray(videoState?.games) ? videoState.games : [];
+
+  groupVisibility.value = {
+    ...defaultGroupVisibility(),
+    ...(videoState?.settings?.groupVisibility || {}),
+  };
+  eventVisibility.value = {
+    ...defaultEventVisibility(),
+    ...(videoState?.settings?.eventVisibility || {}),
+  };
+
+  const availableGameIds = games.value.map((game) => String(game.number));
+  const storedFilter = String(videoState?.settings?.selectedGameFilter || 'all');
+  selectedGameFilter.value = storedFilter === 'all' || availableGameIds.includes(storedFilter) ? storedFilter : 'all';
+}
+
+function resetVideoState() {
+  events.value = [];
+  gameRanges.value = [];
+  selectedGameFilter.value = 'all';
+  groupVisibility.value = defaultGroupVisibility();
+  eventVisibility.value = defaultEventVisibility();
+}
+
 function parseVkEmbedUrl(url) {
   try {
     const parsed = new URL(url);
@@ -312,8 +525,9 @@ function parseVkEmbedUrl(url) {
   }
 }
 
-function startSession() {
-  const parsedUrl = parseVkEmbedUrl(videoUrl.value);
+function startSession(selectedUrl = videoUrl.value) {
+  const normalizedUrl = normalizeVideoUrl(selectedUrl);
+  const parsedUrl = parseVkEmbedUrl(normalizedUrl);
 
   if (!parsedUrl) {
     urlError.value = 'Не удалось распознать ссылку. Нужен URL с фрагментом video-oid_id.';
@@ -321,21 +535,30 @@ function startSession() {
   }
 
   urlError.value = '';
+  activeVideoUrl.value = normalizedUrl;
+  videoUrl.value = normalizedUrl;
   embedUrl.value = parsedUrl;
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
   animatedEvent.value = null;
+  applyStoredVideoState(loadVideoState(normalizedUrl));
+  if (selectedGameFilter.value !== 'all' && !games.value.some((game) => String(game.number) === selectedGameFilter.value)) {
+    selectedGameFilter.value = 'all';
+  }
   isSessionStarted.value = true;
+  persistVideoState();
 }
 
 function resetSession() {
   stopSync();
   vkPlayer = null;
   isSessionStarted.value = false;
+  activeVideoUrl.value = '';
   embedUrl.value = '';
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
   animatedEvent.value = null;
+  resetVideoState();
 }
 
 function postPlayerCommand(payload) {
@@ -345,6 +568,22 @@ function postPlayerCommand(payload) {
   }
 
   target.postMessage(JSON.stringify(payload), '*');
+}
+
+async function playVideo() {
+  if (vkPlayer?.play) {
+    try {
+      await vkPlayer.play();
+      return;
+    } catch {
+      // fallback to postMessage API
+    }
+  }
+
+  postPlayerCommand({ type: 'play' });
+  postPlayerCommand({ type: 'vk_player_play' });
+  postPlayerCommand({ method: 'play' });
+  postPlayerCommand({ event: 'command', func: 'play' });
 }
 
 async function requestCurrentTime() {
@@ -366,7 +605,7 @@ async function requestCurrentTime() {
   postPlayerCommand({ method: 'getCurrentTime' });
 }
 
-async function seekTo(timeSec) {
+async function seekTo(timeSec, shouldPlay = false) {
   const safeTime = Math.max(0, Math.floor(timeSec));
 
   if (vkPlayer?.seek) {
@@ -374,6 +613,11 @@ async function seekTo(timeSec) {
       await vkPlayer.seek(safeTime);
       currentTimeSec.value = safeTime;
       hasSyncedTime.value = true;
+
+      if (shouldPlay) {
+        await playVideo();
+      }
+
       return;
     } catch {
       // fallback to postMessage API
@@ -390,6 +634,15 @@ async function seekTo(timeSec) {
 
   currentTimeSec.value = safeTime;
   requestCurrentTime();
+
+  if (shouldPlay) {
+    await playVideo();
+  }
+}
+
+function seekToEvent(eventTimeSec) {
+  const rewoundTime = Math.max(0, Math.floor(eventTimeSec) - 2);
+  seekTo(rewoundTime, true);
 }
 
 async function onPlayerLoad() {
@@ -457,7 +710,87 @@ function addEvent(type) {
   });
 }
 
+function removeEvent(eventId) {
+  events.value = events.value.filter((event) => event.id !== eventId);
+}
+
+function toggleGameBoundary() {
+  if (!hasSyncedTime.value) {
+    return;
+  }
+
+  const openGame = activeGame.value;
+  if (openGame) {
+    gameRanges.value = gameRanges.value.map((game, index) => {
+      if (index !== openGame.number - 1) {
+        return game;
+      }
+
+      return {
+        ...game,
+        endSec: Math.max(openGame.startSec, currentTimeSec.value),
+      };
+    });
+    return;
+  }
+
+  gameRanges.value.push({
+    id: crypto.randomUUID(),
+    startSec: currentTimeSec.value,
+    endSec: null,
+  });
+
+}
+
+
+function eventGameLabel(timeSec) {
+  const second = Math.max(0, Math.floor(timeSec));
+  const game = games.value.find((candidate) => {
+    const isAfterStart = second >= candidate.startSec;
+    const isBeforeEnd = candidate.endSec === null ? true : second <= candidate.endSec;
+    return isAfterStart && isBeforeEnd;
+  });
+
+  return game?.number || null;
+}
+
+function seekToGame(game) {
+  const rewoundTime = Math.max(0, game.startSec - 2);
+  seekTo(rewoundTime, true);
+}
+
+function removeGame(gameNumber) {
+  gameRanges.value = gameRanges.value.filter((_, index) => index !== gameNumber - 1);
+}
+
+const gameFilterOptions = computed(() => ['all', ...games.value.map((game) => String(game.number))]);
+const selectedGameFilterIndex = computed(() => gameFilterOptions.value.indexOf(selectedGameFilter.value));
+const canSelectPreviousGameFilter = computed(() => selectedGameFilterIndex.value > 0);
+const canSelectNextGameFilter = computed(() => selectedGameFilterIndex.value >= 0 && selectedGameFilterIndex.value < gameFilterOptions.value.length - 1);
+
+function selectPreviousGameFilter() {
+  if (!canSelectPreviousGameFilter.value) {
+    return;
+  }
+
+  selectedGameFilter.value = gameFilterOptions.value[selectedGameFilterIndex.value - 1];
+}
+
+function selectNextGameFilter() {
+  if (!canSelectNextGameFilter.value) {
+    return;
+  }
+
+  selectedGameFilter.value = gameFilterOptions.value[selectedGameFilterIndex.value + 1];
+}
+
 function clearEvents() {
+  const isConfirmed = window.confirm('Вы точно хотите удалить все события?');
+
+  if (!isConfirmed) {
+    return;
+  }
+
   events.value = [];
 }
 
@@ -507,6 +840,17 @@ function formatSeconds(total) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+function formatDateTime(timestamp) {
+  if (!timestamp) {
+    return '—';
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(timestamp);
+}
+
 watch(currentTimeSec, (nextSecond, previousSecond) => {
   if (!hasSyncedTime.value || nextSecond === previousSecond) {
     return;
@@ -514,6 +858,30 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 
   triggerEventAnimationForSecond(nextSecond);
 });
+
+watch(
+  [events, gameRanges, selectedGameFilter, groupVisibility, eventVisibility],
+  () => {
+    if (!isSessionStarted.value) {
+      return;
+    }
+
+    persistVideoState();
+  },
+  { deep: true },
+);
+
+watch(
+  games,
+  (nextGames) => {
+    const available = nextGames.map((game) => String(game.number));
+
+    if (selectedGameFilter.value !== 'all' && !available.includes(selectedGameFilter.value)) {
+      selectedGameFilter.value = 'all';
+    }
+  },
+  { deep: true },
+);
 
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
