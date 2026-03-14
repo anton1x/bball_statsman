@@ -284,6 +284,10 @@ button.secondary {
   margin-top: 1rem;
 }
 
+.logs-title {
+  margin: 0 0 0.7rem;
+}
+
 .logs-layout {
   display: grid;
   grid-template-columns: 40% 1fr;

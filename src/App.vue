@@ -118,8 +118,8 @@
       </div>
 
       <section class="card logs-card">
+      <h2 class="logs-title">{{ logsViewMode === 'history' ? 'История событий' : 'Статистика' }}</h2>
       <div class="toolbar">
-        <h2>{{ logsViewMode === 'history' ? 'История событий' : 'Статистика' }}</h2>
         <div class="toolbar-actions">
           <div class="view-switch" role="tablist" aria-label="Переключение вида блока событий">
             <button
@@ -147,7 +147,7 @@
             </select>
             <button class="secondary" @click="selectNextGameFilter" :disabled="!canSelectNextGameFilter">→</button>
           </div>
-          <button class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
+          <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
       </div>
 
