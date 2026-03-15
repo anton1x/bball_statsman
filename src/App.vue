@@ -175,12 +175,24 @@
           <p class="stat-value">{{ summaryStats.rebounds }}</p>
         </article>
         <article class="stat-card">
+          <p class="stat-label">Блокшоты</p>
+          <p class="stat-value">{{ summaryStats.blocks }}</p>
+        </article>
+        <article class="stat-card">
           <p class="stat-label">Потери</p>
           <p class="stat-value">{{ summaryStats.turnovers }}</p>
         </article>
         <article class="stat-card">
           <p class="stat-label">Перехваты</p>
           <p class="stat-value">{{ summaryStats.steals }}</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">3-очковые</p>
+          <p class="stat-value">{{ summaryStats.made_3pt }}/{{ summaryStats.attempt_3pt }} ({{ summaryStats.percentage_3pt.toFixed(2) }}%)</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">2-очковые</p>
+          <p class="stat-value">{{ summaryStats.made_2pt }}/{{ summaryStats.attempt_2pt }} ({{ summaryStats.percentage_2pt.toFixed(2) }}%)</p>
         </article>
       </div>
 
@@ -255,9 +267,16 @@ const eventGroups = [
     id: 'shots',
     label: 'Броски',
     events: [
-      { type: 'made_2pt', label: '2-очковое', tone: 'positive', icon: '🏀' },
-      { type: 'made_3pt', label: '3-очковое', tone: 'positive', icon: '🎯' },
-      { type: 'missed_shot', label: 'Промах', tone: 'negative', icon: '❌' },
+      { type: 'made_2pt', label: '2 очка', tone: 'positive', icon: '🏀' },
+      { type: 'made_3pt', label: '3 очка', tone: 'positive', icon: '🎯' },
+    ],
+  },
+    {
+    id: 'misses',
+    label: 'Промахи',
+    events: [
+      { type: 'missed_shot_2pt', label: '2 очка', tone: 'negative', icon: '❌' },
+      { type: 'missed_shot_3pt', label: '3 очка', tone: 'negative', icon: '❌' },
     ],
   },
   {
@@ -272,7 +291,8 @@ const eventGroups = [
     id: 'defense',
     label: 'Защита',
     events: [
-      {type: 'steal', label: 'Перехват', tone: 'positive', icon: '🥷'}
+      {type: 'steal', label: 'Перехват', tone: 'positive', icon: '🥷'},
+      {type: 'block', label: 'Блок', tone: 'positive', icon: '💪'}
     ],
   },
   {
@@ -336,15 +356,27 @@ const filteredEvents = computed(() =>
   }),
 );
 
-const summaryStats = computed(() =>
-  filteredEvents.value.reduce(
+const summaryStats = computed(() => {
+  let aggs = filteredEvents.value.reduce(
     (acc, event) => {
       if (event.type === 'made_2pt') {
         acc.points += 2;
+        acc.made_2pt ++;
       }
 
       if (event.type === 'made_3pt') {
         acc.points += 3;
+        acc.made_3pt ++;
+      }
+
+      if (event.type === 'missed_shot_2pt') {
+        acc.missed_2pt += 1;
+        acc.misses += 1;
+      }
+
+      if (event.type === 'missed_shot_3pt') {
+        acc.missed_3pt += 1;
+        acc.misses += 1;
       }
 
       if (event.type === 'rebound') {
@@ -363,10 +395,24 @@ const summaryStats = computed(() =>
         acc.assists += 1;
       }
 
+      if (event.type === 'block') {
+        acc.blocks += 1;
+      }
+
       return acc;
     },
-    { points: 0, rebounds: 0, turnovers: 0, steals: 0, assists: 0 },
-  ),
+    { points: 0, rebounds: 0, blocks: 0, turnovers: 0, steals: 0, assists: 0, misses: 0, missed_2pt:0, missed_3pt: 0, made_2pt: 0, made_3pt: 0},
+  )
+
+  aggs.attempt_2pt = aggs.made_2pt + aggs.missed_2pt
+  aggs.attempt_3pt = aggs.made_3pt + aggs.missed_3pt
+  aggs.total_attempts = aggs.attempt_2pt + aggs.attempt_3pt
+  aggs.percentage_2pt = aggs.attempt_2pt ? (aggs.made_2pt / aggs.attempt_2pt) * 100 : 0
+  aggs.percentage_3pt = aggs.attempt_3pt ? (aggs.made_3pt / aggs.attempt_3pt) * 100 : 0
+  aggs.percentage_all = aggs.total_attempts ? ((aggs.made_2pt + aggs.made_3pt) / aggs.total_attempts) * 100 : 0
+
+  return aggs
+}
 );
 
 function setEventVisibility(type, isVisible) {
