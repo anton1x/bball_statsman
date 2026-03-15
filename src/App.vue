@@ -154,6 +154,13 @@
             </select>
             <button class="secondary" @click="selectNextGameFilter" :disabled="!canSelectNextGameFilter">→</button>
           </div>
+          <button
+            v-if="logsViewMode === 'history'"
+            :class="['secondary', 'highlight-filter-toggle', { active: showOnlyHighlights }]"
+            @click="showOnlyHighlights = !showOnlyHighlights"
+          >
+            🔥 Только выдающиеся
+          </button>
           <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
       </div>
@@ -163,6 +170,13 @@
           <button class="time-link" @click="seekToEvent(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
           <span v-if="eventGameLabel(event.videoTimeSec)" class="event-game-label">игра #{{ eventGameLabel(event.videoTimeSec) }}</span>
+          <button
+            :class="['secondary', 'event-highlight-button', { active: event.isHighlighted }]"
+            :aria-pressed="event.isHighlighted"
+            @click="toggleEventHighlight(event.id)"
+          >
+            🔥
+          </button>
           <button class="secondary delete-event-button" @click="removeEvent(event.id)">Удалить</button>
         </li>
       </ul>
@@ -258,6 +272,7 @@ const logsViewMode = ref('history');
 const activeVideoUrl = ref('');
 const gameRanges = ref([]);
 const selectedGameFilter = ref('all');
+const showOnlyHighlights = ref(false);
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -354,7 +369,7 @@ const games = computed(() =>
 
 const activeGame = computed(() => games.value.find((game) => game.endSec === null) || null);
 
-const filteredEvents = computed(() =>
+const eventsByTime = computed(() =>
   events.value
     .filter((event) => {
       if (selectedGameFilter.value === 'all') {
@@ -367,8 +382,12 @@ const filteredEvents = computed(() =>
     .sort((a, b) => a.videoTimeSec - b.videoTimeSec),
 );
 
+const filteredEvents = computed(() =>
+  showOnlyHighlights.value ? eventsByTime.value.filter((event) => event.isHighlighted) : eventsByTime.value,
+);
+
 const summaryStats = computed(() => {
-  let aggs = filteredEvents.value.reduce(
+  let aggs = eventsByTime.value.reduce(
     (acc, event) => {
       if (event.type === 'made_2pt') {
         acc.points += 2;
@@ -498,6 +517,7 @@ function persistVideoState() {
         groupVisibility: groupVisibility.value,
         eventVisibility: eventVisibility.value,
         selectedGameFilter: selectedGameFilter.value,
+        showOnlyHighlights: showOnlyHighlights.value,
       },
     };
 
@@ -544,12 +564,14 @@ function applyStoredVideoState(videoState) {
   const availableGameIds = games.value.map((game) => String(game.number));
   const storedFilter = String(videoState?.settings?.selectedGameFilter || 'all');
   selectedGameFilter.value = storedFilter === 'all' || availableGameIds.includes(storedFilter) ? storedFilter : 'all';
+  showOnlyHighlights.value = Boolean(videoState?.settings?.showOnlyHighlights);
 }
 
 function resetVideoState() {
   events.value = [];
   gameRanges.value = [];
   selectedGameFilter.value = 'all';
+  showOnlyHighlights.value = false;
   groupVisibility.value = defaultGroupVisibility();
   eventVisibility.value = defaultEventVisibility();
 }
@@ -831,6 +853,20 @@ function addEvent(type) {
     id: crypto.randomUUID(),
     videoTimeSec: currentTimeSec.value,
     type,
+    isHighlighted: false,
+  });
+}
+
+function toggleEventHighlight(eventId) {
+  events.value = events.value.map((event) => {
+    if (event.id !== eventId) {
+      return event;
+    }
+
+    return {
+      ...event,
+      isHighlighted: !event.isHighlighted,
+    };
   });
 }
 
@@ -984,7 +1020,7 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 });
 
 watch(
-  [events, gameRanges, selectedGameFilter, groupVisibility, eventVisibility],
+  [events, gameRanges, selectedGameFilter, showOnlyHighlights, groupVisibility, eventVisibility],
   () => {
     if (!isSessionStarted.value) {
       return;

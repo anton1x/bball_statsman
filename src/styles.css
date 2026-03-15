@@ -346,6 +346,20 @@ button.secondary {
   padding: 0.5rem 0.7rem;
 }
 
+
+.highlight-filter-toggle.active,
+.event-highlight-button.active {
+  background: #f97316;
+  color: #fff;
+}
+
+.event-highlight-button {
+  min-width: 42px;
+  font-size: 1rem;
+  padding: 0.45rem 0.55rem;
+}
+
+
 .time-link {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   background: #eef4ff;
