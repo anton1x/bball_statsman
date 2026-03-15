@@ -355,14 +355,16 @@ const games = computed(() =>
 const activeGame = computed(() => games.value.find((game) => game.endSec === null) || null);
 
 const filteredEvents = computed(() =>
-  events.value.filter((event) => {
-    if (selectedGameFilter.value === 'all') {
-      return true;
-    }
+  events.value
+    .filter((event) => {
+      if (selectedGameFilter.value === 'all') {
+        return true;
+      }
 
-    const gameNumber = eventGameLabel(event.videoTimeSec);
-    return String(gameNumber) === selectedGameFilter.value;
-  }),
+      const gameNumber = eventGameLabel(event.videoTimeSec);
+      return String(gameNumber) === selectedGameFilter.value;
+    })
+    .sort((a, b) => a.videoTimeSec - b.videoTimeSec),
 );
 
 const summaryStats = computed(() => {
