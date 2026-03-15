@@ -5,6 +5,10 @@
       <p>Фиксируйте игровые события по ходу просмотра записи матча.</p>
     </header>
 
+    <transition name="copy-toast">
+      <div v-if="shareLinkStatus" class="copy-toast" role="status" aria-live="polite">{{ shareLinkStatus }}</div>
+    </transition>
+
     <section v-if="!isSessionStarted" class="card start-card">
       <label for="videoUrl">Ссылка на VK Video</label>
       <input
@@ -69,7 +73,6 @@
             <button class="secondary" @click="resetSession">Сменить ссылку</button>
           </div>
         </div>
-        <p v-if="shareLinkStatus" class="hint">{{ shareLinkStatus }}</p>
         <div class="player-frame-wrap" v-if="embedUrl">
           <iframe
             ref="playerFrameRef"

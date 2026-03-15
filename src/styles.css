@@ -18,6 +18,33 @@ body {
   padding: 2rem 1rem 3rem;
 }
 
+.copy-toast {
+  position: fixed;
+  top: 1.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  background: rgba(31, 41, 55, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+.copy-toast-enter-active,
+.copy-toast-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.copy-toast-enter-from,
+.copy-toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -8px);
+}
+
+
 header h1 {
   margin: 0;
 }
