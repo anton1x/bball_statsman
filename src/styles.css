@@ -347,16 +347,33 @@ button.secondary {
 }
 
 
-.highlight-filter-toggle.active,
-.event-highlight-button.active {
-  background: #f97316;
-  color: #fff;
+.icon-toggle {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0.1rem;
+  color: #98a2b3;
+  line-height: 1;
 }
 
+.icon-toggle:hover {
+  background: transparent;
+  color: #667085;
+}
+
+.icon-toggle:focus-visible {
+  outline: 2px solid #98a2b3;
+  outline-offset: 2px;
+}
+
+.highlight-filter-toggle,
 .event-highlight-button {
-  min-width: 42px;
-  font-size: 1rem;
-  padding: 0.45rem 0.55rem;
+  font-size: 1.15rem;
+}
+
+.highlight-filter-toggle.active,
+.event-highlight-button.active {
+  color: #f97316;
 }
 
 

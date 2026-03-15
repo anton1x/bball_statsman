@@ -156,10 +156,12 @@
           </div>
           <button
             v-if="logsViewMode === 'history'"
-            :class="['secondary', 'highlight-filter-toggle', { active: showOnlyHighlights }]"
+            :class="['icon-toggle', 'highlight-filter-toggle', { active: showOnlyHighlights }]"
             @click="showOnlyHighlights = !showOnlyHighlights"
+            :title="showOnlyHighlights ? 'Показаны только выдающиеся' : 'Показывать только выдающиеся'"
+            aria-label="Фильтр выдающихся событий"
           >
-            🔥 Только выдающиеся
+            🔥
           </button>
           <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
@@ -171,9 +173,11 @@
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
           <span v-if="eventGameLabel(event.videoTimeSec)" class="event-game-label">игра #{{ eventGameLabel(event.videoTimeSec) }}</span>
           <button
-            :class="['secondary', 'event-highlight-button', { active: event.isHighlighted }]"
+            :class="['icon-toggle', 'event-highlight-button', { active: event.isHighlighted }]"
             :aria-pressed="event.isHighlighted"
             @click="toggleEventHighlight(event.id)"
+            :title="event.isHighlighted ? 'Убрать из выдающихся' : 'Отметить как выдающееся'"
+            aria-label="Переключить выдающееся событие"
           >
             🔥
           </button>
