@@ -5,6 +5,10 @@
       <p>Фиксируйте игровые события по ходу просмотра записи матча.</p>
     </header>
 
+    <transition name="copy-toast">
+      <div v-if="shareLinkStatus" class="copy-toast" role="status" aria-live="polite">{{ shareLinkStatus }}</div>
+    </transition>
+
     <section v-if="!isSessionStarted" class="card start-card">
       <label for="videoUrl">Ссылка на VK Video</label>
       <input
@@ -64,7 +68,10 @@
       <div class="card player-card">
         <div class="toolbar">
           <strong>Видео</strong>
-          <button class="secondary" @click="resetSession">Сменить ссылку</button>
+          <div class="toolbar-actions">
+            <button class="secondary" @click="copyShareLink" :disabled="!activeVideoUrl">Копировать ссылку</button>
+            <button class="secondary" @click="resetSession">Сменить ссылку</button>
+          </div>
         </div>
         <div class="player-frame-wrap" v-if="embedUrl">
           <iframe
@@ -147,6 +154,15 @@
             </select>
             <button class="secondary" @click="selectNextGameFilter" :disabled="!canSelectNextGameFilter">→</button>
           </div>
+          <button
+            v-if="logsViewMode === 'history'"
+            :class="['icon-toggle', 'highlight-filter-toggle', { active: showOnlyHighlights }]"
+            @click="showOnlyHighlights = !showOnlyHighlights"
+            :title="showOnlyHighlights ? 'Показаны только выдающиеся' : 'Показывать только выдающиеся'"
+            aria-label="Фильтр выдающихся событий"
+          >
+            🔥
+          </button>
           <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
       </div>
@@ -156,6 +172,15 @@
           <button class="time-link" @click="seekToEvent(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
           <span v-if="eventGameLabel(event.videoTimeSec)" class="event-game-label">игра #{{ eventGameLabel(event.videoTimeSec) }}</span>
+          <button
+            :class="['icon-toggle', 'event-highlight-button', { active: event.isHighlighted }]"
+            :aria-pressed="event.isHighlighted"
+            @click="toggleEventHighlight(event.id)"
+            :title="event.isHighlighted ? 'Убрать из выдающихся' : 'Отметить как выдающееся'"
+            aria-label="Переключить выдающееся событие"
+          >
+            🔥
+          </button>
           <button class="secondary delete-event-button" @click="removeEvent(event.id)">Удалить</button>
         </li>
       </ul>
@@ -251,15 +276,18 @@ const logsViewMode = ref('history');
 const activeVideoUrl = ref('');
 const gameRanges = ref([]);
 const selectedGameFilter = ref('all');
+const showOnlyHighlights = ref(false);
 
 const events = ref([]);
 const currentTimeSec = ref(0);
 const hasSyncedTime = ref(false);
 const animatedEvent = ref(null);
 const animatedEventRenderKey = ref(0);
+const shareLinkStatus = ref('');
 
 let syncInterval = null;
 let animationTimeout = null;
+let shareLinkStatusTimeout = null;
 let vkPlayer = null;
 
 const eventGroups = [
@@ -345,19 +373,25 @@ const games = computed(() =>
 
 const activeGame = computed(() => games.value.find((game) => game.endSec === null) || null);
 
-const filteredEvents = computed(() =>
-  events.value.filter((event) => {
-    if (selectedGameFilter.value === 'all') {
-      return true;
-    }
+const eventsByTime = computed(() =>
+  events.value
+    .filter((event) => {
+      if (selectedGameFilter.value === 'all') {
+        return true;
+      }
 
-    const gameNumber = eventGameLabel(event.videoTimeSec);
-    return String(gameNumber) === selectedGameFilter.value;
-  }),
+      const gameNumber = eventGameLabel(event.videoTimeSec);
+      return String(gameNumber) === selectedGameFilter.value;
+    })
+    .sort((a, b) => a.videoTimeSec - b.videoTimeSec),
+);
+
+const filteredEvents = computed(() =>
+  showOnlyHighlights.value ? eventsByTime.value.filter((event) => event.isHighlighted) : eventsByTime.value,
 );
 
 const summaryStats = computed(() => {
-  let aggs = filteredEvents.value.reduce(
+  let aggs = eventsByTime.value.reduce(
     (acc, event) => {
       if (event.type === 'made_2pt') {
         acc.points += 2;
@@ -487,6 +521,7 @@ function persistVideoState() {
         groupVisibility: groupVisibility.value,
         eventVisibility: eventVisibility.value,
         selectedGameFilter: selectedGameFilter.value,
+        showOnlyHighlights: showOnlyHighlights.value,
       },
     };
 
@@ -533,12 +568,14 @@ function applyStoredVideoState(videoState) {
   const availableGameIds = games.value.map((game) => String(game.number));
   const storedFilter = String(videoState?.settings?.selectedGameFilter || 'all');
   selectedGameFilter.value = storedFilter === 'all' || availableGameIds.includes(storedFilter) ? storedFilter : 'all';
+  showOnlyHighlights.value = Boolean(videoState?.settings?.showOnlyHighlights);
 }
 
 function resetVideoState() {
   events.value = [];
   gameRanges.value = [];
   selectedGameFilter.value = 'all';
+  showOnlyHighlights.value = false;
   groupVisibility.value = defaultGroupVisibility();
   eventVisibility.value = defaultEventVisibility();
 }
@@ -571,6 +608,70 @@ function parseVkEmbedUrl(url) {
   }
 }
 
+function getVideoQueryParamValue() {
+  return new URLSearchParams(window.location.search).get('video') || '';
+}
+
+function buildShareUrl(video) {
+  const shareUrl = new URL(window.location.href);
+  shareUrl.searchParams.set('video', video);
+  return shareUrl.toString();
+}
+
+function syncVideoQueryParam(video) {
+  const nextUrl = new URL(window.location.href);
+
+  if (video) {
+    nextUrl.searchParams.set('video', video);
+  } else {
+    nextUrl.searchParams.delete('video');
+  }
+
+  window.history.replaceState({}, '', nextUrl);
+}
+
+function setShareStatus(message) {
+  shareLinkStatus.value = message;
+
+  if (shareLinkStatusTimeout) {
+    clearTimeout(shareLinkStatusTimeout);
+  }
+
+  shareLinkStatusTimeout = setTimeout(() => {
+    shareLinkStatus.value = '';
+  }, 2200);
+}
+
+async function copyShareLink() {
+  if (!activeVideoUrl.value) {
+    return;
+  }
+
+  const shareUrl = buildShareUrl(activeVideoUrl.value);
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareStatus('Ссылка скопирована.');
+      return;
+    }
+  } catch {
+    // fallback below
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = shareUrl;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'absolute';
+  textarea.style.left = '-9999px';
+  document.body.append(textarea);
+  textarea.select();
+
+  const isCopied = document.execCommand('copy');
+  textarea.remove();
+  setShareStatus(isCopied ? 'Ссылка скопирована.' : 'Не удалось скопировать ссылку.');
+}
+
 function startSession(selectedUrl = videoUrl.value) {
   const normalizedUrl = normalizeVideoUrl(selectedUrl);
   const parsedUrl = parseVkEmbedUrl(normalizedUrl);
@@ -592,6 +693,7 @@ function startSession(selectedUrl = videoUrl.value) {
     selectedGameFilter.value = 'all';
   }
   isSessionStarted.value = true;
+  syncVideoQueryParam(normalizedUrl);
   persistVideoState();
 }
 
@@ -604,6 +706,8 @@ function resetSession() {
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
   animatedEvent.value = null;
+  shareLinkStatus.value = '';
+  syncVideoQueryParam('');
   resetVideoState();
 }
 
@@ -753,6 +857,20 @@ function addEvent(type) {
     id: crypto.randomUUID(),
     videoTimeSec: currentTimeSec.value,
     type,
+    isHighlighted: false,
+  });
+}
+
+function toggleEventHighlight(eventId) {
+  events.value = events.value.map((event) => {
+    if (event.id !== eventId) {
+      return event;
+    }
+
+    return {
+      ...event,
+      isHighlighted: !event.isHighlighted,
+    };
   });
 }
 
@@ -906,7 +1024,7 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 });
 
 watch(
-  [events, gameRanges, selectedGameFilter, groupVisibility, eventVisibility],
+  [events, gameRanges, selectedGameFilter, showOnlyHighlights, groupVisibility, eventVisibility],
   () => {
     if (!isSessionStarted.value) {
       return;
@@ -931,6 +1049,12 @@ watch(
 
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
+
+  const initialVideoParam = getVideoQueryParamValue();
+  if (initialVideoParam) {
+    videoUrl.value = initialVideoParam;
+    startSession(initialVideoParam);
+  }
 });
 
 onBeforeUnmount(() => {
@@ -939,6 +1063,10 @@ onBeforeUnmount(() => {
   if (animationTimeout) {
     clearTimeout(animationTimeout);
     animationTimeout = null;
+  }
+  if (shareLinkStatusTimeout) {
+    clearTimeout(shareLinkStatusTimeout);
+    shareLinkStatusTimeout = null;
   }
   animatedEvent.value = null;
   window.removeEventListener('message', handlePlayerMessage);
