@@ -64,8 +64,12 @@
       <div class="card player-card">
         <div class="toolbar">
           <strong>Видео</strong>
-          <button class="secondary" @click="resetSession">Сменить ссылку</button>
+          <div class="toolbar-actions">
+            <button class="secondary" @click="copyShareLink" :disabled="!activeVideoUrl">Копировать ссылку</button>
+            <button class="secondary" @click="resetSession">Сменить ссылку</button>
+          </div>
         </div>
+        <p v-if="shareLinkStatus" class="hint">{{ shareLinkStatus }}</p>
         <div class="player-frame-wrap" v-if="embedUrl">
           <iframe
             ref="playerFrameRef"
@@ -257,9 +261,11 @@ const currentTimeSec = ref(0);
 const hasSyncedTime = ref(false);
 const animatedEvent = ref(null);
 const animatedEventRenderKey = ref(0);
+const shareLinkStatus = ref('');
 
 let syncInterval = null;
 let animationTimeout = null;
+let shareLinkStatusTimeout = null;
 let vkPlayer = null;
 
 const eventGroups = [
@@ -571,6 +577,70 @@ function parseVkEmbedUrl(url) {
   }
 }
 
+function getVideoQueryParamValue() {
+  return new URLSearchParams(window.location.search).get('video') || '';
+}
+
+function buildShareUrl(video) {
+  const shareUrl = new URL(window.location.href);
+  shareUrl.searchParams.set('video', video);
+  return shareUrl.toString();
+}
+
+function syncVideoQueryParam(video) {
+  const nextUrl = new URL(window.location.href);
+
+  if (video) {
+    nextUrl.searchParams.set('video', video);
+  } else {
+    nextUrl.searchParams.delete('video');
+  }
+
+  window.history.replaceState({}, '', nextUrl);
+}
+
+function setShareStatus(message) {
+  shareLinkStatus.value = message;
+
+  if (shareLinkStatusTimeout) {
+    clearTimeout(shareLinkStatusTimeout);
+  }
+
+  shareLinkStatusTimeout = setTimeout(() => {
+    shareLinkStatus.value = '';
+  }, 2200);
+}
+
+async function copyShareLink() {
+  if (!activeVideoUrl.value) {
+    return;
+  }
+
+  const shareUrl = buildShareUrl(activeVideoUrl.value);
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareStatus('Ссылка скопирована.');
+      return;
+    }
+  } catch {
+    // fallback below
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = shareUrl;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'absolute';
+  textarea.style.left = '-9999px';
+  document.body.append(textarea);
+  textarea.select();
+
+  const isCopied = document.execCommand('copy');
+  textarea.remove();
+  setShareStatus(isCopied ? 'Ссылка скопирована.' : 'Не удалось скопировать ссылку.');
+}
+
 function startSession(selectedUrl = videoUrl.value) {
   const normalizedUrl = normalizeVideoUrl(selectedUrl);
   const parsedUrl = parseVkEmbedUrl(normalizedUrl);
@@ -592,6 +662,7 @@ function startSession(selectedUrl = videoUrl.value) {
     selectedGameFilter.value = 'all';
   }
   isSessionStarted.value = true;
+  syncVideoQueryParam(normalizedUrl);
   persistVideoState();
 }
 
@@ -604,6 +675,8 @@ function resetSession() {
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
   animatedEvent.value = null;
+  shareLinkStatus.value = '';
+  syncVideoQueryParam('');
   resetVideoState();
 }
 
@@ -931,6 +1004,12 @@ watch(
 
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
+
+  const initialVideoParam = getVideoQueryParamValue();
+  if (initialVideoParam) {
+    videoUrl.value = initialVideoParam;
+    startSession(initialVideoParam);
+  }
 });
 
 onBeforeUnmount(() => {
@@ -939,6 +1018,10 @@ onBeforeUnmount(() => {
   if (animationTimeout) {
     clearTimeout(animationTimeout);
     animationTimeout = null;
+  }
+  if (shareLinkStatusTimeout) {
+    clearTimeout(shareLinkStatusTimeout);
+    shareLinkStatusTimeout = null;
   }
   animatedEvent.value = null;
   window.removeEventListener('message', handlePlayerMessage);
