@@ -578,6 +578,29 @@ pre {
   font-size: 0.85rem;
 }
 
+
+.unknown-player-assign {
+  display: inline-flex;
+  align-items: center;
+}
+
+.event-player-link {
+  background: transparent;
+  border: none;
+  color: #b42318;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.event-player-select {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0.25rem 0.4rem;
+  background: #fff;
+  color: #182230;
+}
+
 .teams-toolbar {
   margin: 0.8rem 0;
 }

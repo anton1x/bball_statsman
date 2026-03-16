@@ -193,7 +193,28 @@
         <li v-for="event in filteredEvents" :key="event.id" class="event-item">
           <button class="time-link" @click="seekToEvent(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
-          <span class="event-player-label">{{ eventPlayerLabel(event) }}</span>
+          <span v-if="!isUnknownEventPlayer(event)" class="event-player-label">{{ eventPlayerLabel(event) }}</span>
+          <div v-else class="unknown-player-assign">
+            <button
+              v-if="assigningPlayerEventId !== event.id"
+              class="event-player-link"
+              @click="startAssignEventPlayer(event.id)"
+            >
+              {{ eventPlayerLabel(event) }}
+            </button>
+            <select
+              v-else
+              class="event-player-select"
+              :value="event.playerId || ''"
+              @change="assignEventPlayer(event.id, $event.target.value)"
+              @blur="cancelAssignEventPlayer"
+            >
+              <option disabled value="">Выберите игрока</option>
+              <option v-for="option in playerOptions" :key="`event-player-${event.id}-${option.id}`" :value="option.id">
+                {{ option.teamName }} · {{ option.playerName }}
+              </option>
+            </select>
+          </div>
           <span v-if="eventGameLabel(event.videoTimeSec)" class="event-game-label">игра #{{ eventGameLabel(event.videoTimeSec) }}</span>
           <button
             :class="['icon-toggle', 'event-highlight-button', { active: event.isHighlighted }]"
@@ -343,6 +364,7 @@ const showOnlyHighlights = ref(false);
 const isTeamsOpen = ref(false);
 const teams = ref(defaultTeams());
 const selectedPlayerId = ref('');
+const assigningPlayerEventId = ref('');
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -1143,6 +1165,39 @@ function eventPlayerLabel(event) {
   return fallback;
 }
 
+
+function isUnknownEventPlayer(event) {
+  return eventPlayerLabel(event) === 'Неизвестный игрок';
+}
+
+function startAssignEventPlayer(eventId) {
+  assigningPlayerEventId.value = eventId;
+}
+
+function cancelAssignEventPlayer() {
+  assigningPlayerEventId.value = '';
+}
+
+function assignEventPlayer(eventId, playerId) {
+  if (!playerId) {
+    cancelAssignEventPlayer();
+    return;
+  }
+
+  events.value = events.value.map((event) => {
+    if (event.id !== eventId) {
+      return event;
+    }
+
+    return {
+      ...event,
+      playerId,
+    };
+  });
+
+  cancelAssignEventPlayer();
+}
+
 function toggleEventHighlight(eventId) {
   events.value = events.value.map((event) => {
     if (event.id !== eventId) {
@@ -1158,6 +1213,10 @@ function toggleEventHighlight(eventId) {
 
 function removeEvent(eventId) {
   events.value = events.value.filter((event) => event.id !== eventId);
+
+  if (assigningPlayerEventId.value === eventId) {
+    cancelAssignEventPlayer();
+  }
 }
 
 function toggleGameBoundary() {
@@ -1277,6 +1336,7 @@ function clearEvents() {
   }
 
   events.value = [];
+  cancelAssignEventPlayer();
 }
 
 function triggerEventAnimationForSecond(second) {
