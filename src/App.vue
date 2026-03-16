@@ -167,6 +167,15 @@
             </select>
             <button class="secondary" @click="selectNextGameFilter" :disabled="!canSelectNextGameFilter">→</button>
           </div>
+          <div class="games-filter-inline" v-if="rosterFilterOptions.length">
+            <button class="secondary" @click="selectPreviousRosterFilter" :disabled="!canSelectPreviousRosterFilter">←</button>
+            <select v-model="selectedRosterFilter" aria-label="Фильтр по командам и игрокам">
+              <option v-for="option in rosterFilterOptions" :key="`roster-filter-${option.value}`" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+            <button class="secondary" @click="selectNextRosterFilter" :disabled="!canSelectNextRosterFilter">→</button>
+          </div>
           <button
             v-if="logsViewMode === 'history'"
             :class="['icon-toggle', 'highlight-filter-toggle', { active: showOnlyHighlights }]"
@@ -329,6 +338,7 @@ const logsViewMode = ref('history');
 const activeVideoUrl = ref('');
 const gameRanges = ref([]);
 const selectedGameFilter = ref('all');
+const selectedRosterFilter = ref('all');
 const showOnlyHighlights = ref(false);
 const isTeamsOpen = ref(false);
 const teams = ref(defaultTeams());
@@ -492,6 +502,32 @@ const selectedPlayerIndex = computed(() => playerOptions.value.findIndex((option
 const canSelectPreviousPlayer = computed(() => selectedPlayerIndex.value > 0);
 const canSelectNextPlayer = computed(() => selectedPlayerIndex.value >= 0 && selectedPlayerIndex.value < playerOptions.value.length - 1);
 
+const rosterFilterOptions = computed(() => {
+  const options = [{ value: 'all', label: 'Все игроки' }];
+
+  teams.value.forEach((team) => {
+    options.push({
+      value: `team:${team.id}`,
+      label: `Команда: ${team.name}`,
+    });
+
+    team.players.forEach((player) => {
+      options.push({
+        value: `player:${player.id}`,
+        label: `${team.name} · ${player.name}`,
+      });
+    });
+  });
+
+  return options;
+});
+const rosterFilterValues = computed(() => rosterFilterOptions.value.map((option) => option.value));
+const selectedRosterFilterIndex = computed(() => rosterFilterValues.value.indexOf(selectedRosterFilter.value));
+const canSelectPreviousRosterFilter = computed(() => selectedRosterFilterIndex.value > 0);
+const canSelectNextRosterFilter = computed(() =>
+  selectedRosterFilterIndex.value >= 0 && selectedRosterFilterIndex.value < rosterFilterValues.value.length - 1,
+);
+
 const eventsByTime = computed(() =>
   events.value
     .filter((event) => {
@@ -502,6 +538,7 @@ const eventsByTime = computed(() =>
       const gameNumber = eventGameLabel(event.videoTimeSec);
       return String(gameNumber) === selectedGameFilter.value;
     })
+    .filter((event) => matchRosterFilter(event))
     .sort((a, b) => a.videoTimeSec - b.videoTimeSec),
 );
 
@@ -640,6 +677,7 @@ function persistVideoState() {
         groupVisibility: groupVisibility.value,
         eventVisibility: eventVisibility.value,
         selectedGameFilter: selectedGameFilter.value,
+        selectedRosterFilter: selectedRosterFilter.value,
         showOnlyHighlights: showOnlyHighlights.value,
         teams: teams.value,
         selectedPlayerId: selectedPlayerId.value,
@@ -687,10 +725,14 @@ function applyStoredVideoState(videoState) {
   };
 
   const availableGameIds = games.value.map((game) => String(game.number));
-  const storedFilter = String(videoState?.settings?.selectedGameFilter || 'all');
-  selectedGameFilter.value = storedFilter === 'all' || availableGameIds.includes(storedFilter) ? storedFilter : 'all';
+  const storedGameFilter = String(videoState?.settings?.selectedGameFilter || 'all');
+  selectedGameFilter.value = storedGameFilter === 'all' || availableGameIds.includes(storedGameFilter) ? storedGameFilter : 'all';
   showOnlyHighlights.value = Boolean(videoState?.settings?.showOnlyHighlights);
   teams.value = ensureTeamsStructure(videoState?.settings?.teams);
+
+  const rosterValues = rosterFilterOptions.value.map((option) => option.value);
+  const storedRosterFilter = String(videoState?.settings?.selectedRosterFilter || 'all');
+  selectedRosterFilter.value = rosterValues.includes(storedRosterFilter) ? storedRosterFilter : 'all';
 
   const firstPlayerId = playerOptions.value[0]?.id || '';
   const storedPlayerId = String(videoState?.settings?.selectedPlayerId || '');
@@ -701,6 +743,7 @@ function resetVideoState() {
   events.value = [];
   gameRanges.value = [];
   selectedGameFilter.value = 'all';
+  selectedRosterFilter.value = 'all';
   showOnlyHighlights.value = false;
   groupVisibility.value = defaultGroupVisibility();
   eventVisibility.value = defaultEventVisibility();
@@ -819,6 +862,10 @@ function startSession(selectedUrl = videoUrl.value) {
   applyStoredVideoState(loadVideoState(normalizedUrl));
   if (selectedGameFilter.value !== 'all' && !games.value.some((game) => String(game.number) === selectedGameFilter.value)) {
     selectedGameFilter.value = 'all';
+  }
+
+  if (!rosterFilterValues.value.includes(selectedRosterFilter.value)) {
+    selectedRosterFilter.value = 'all';
   }
   isSessionStarted.value = true;
   syncVideoQueryParam(normalizedUrl);
@@ -1183,6 +1230,45 @@ function selectNextGameFilter() {
   selectedGameFilter.value = gameFilterOptions.value[selectedGameFilterIndex.value + 1];
 }
 
+
+function findTeamByPlayerId(playerId) {
+  return teams.value.find((team) => team.players.some((player) => player.id === playerId)) || null;
+}
+
+function matchRosterFilter(event) {
+  if (selectedRosterFilter.value === 'all') {
+    return true;
+  }
+
+  const [scope, id] = selectedRosterFilter.value.split(':');
+
+  if (scope === 'team') {
+    return findTeamByPlayerId(event.playerId)?.id === id;
+  }
+
+  if (scope === 'player') {
+    return event.playerId === id;
+  }
+
+  return true;
+}
+
+function selectPreviousRosterFilter() {
+  if (!canSelectPreviousRosterFilter.value) {
+    return;
+  }
+
+  selectedRosterFilter.value = rosterFilterValues.value[selectedRosterFilterIndex.value - 1];
+}
+
+function selectNextRosterFilter() {
+  if (!canSelectNextRosterFilter.value) {
+    return;
+  }
+
+  selectedRosterFilter.value = rosterFilterValues.value[selectedRosterFilterIndex.value + 1];
+}
+
 function clearEvents() {
   const isConfirmed = window.confirm('Вы точно хотите удалить все события?');
 
@@ -1259,7 +1345,7 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 });
 
 watch(
-  [events, gameRanges, selectedGameFilter, showOnlyHighlights, groupVisibility, eventVisibility, teams, selectedPlayerId],
+  [events, gameRanges, selectedGameFilter, selectedRosterFilter, showOnlyHighlights, groupVisibility, eventVisibility, teams, selectedPlayerId],
   () => {
     if (!isSessionStarted.value) {
       return;
@@ -1289,6 +1375,10 @@ watch(
   () => {
     if (!playerOptions.value.some((option) => option.id === selectedPlayerId.value)) {
       selectedPlayerId.value = playerOptions.value[0]?.id || '';
+    }
+
+    if (!rosterFilterValues.value.includes(selectedRosterFilter.value)) {
+      selectedRosterFilter.value = 'all';
     }
   },
   { deep: true },
