@@ -34,6 +34,32 @@ jobs:
           source: "backend,src,nginx,index.html,package.json,package-lock.json,vite.config.js,Dockerfile.frontend,docker-compose.yml"
           target: ${{ secrets.VPS_APP_DIR }}
 
+      - name: Write SSL certificates on VPS (optional)
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          SSL_CERT: ${{ secrets.VPS_SSL_CERT }}
+          SSL_KEY: ${{ secrets.VPS_SSL_KEY }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          envs: SSL_CERT,SSL_KEY
+          script: |
+            set -e
+            cd ${{ secrets.VPS_APP_DIR }}
+            mkdir -p ssl
+            if [ -n "$SSL_CERT" ] && [ -n "$SSL_KEY" ]; then
+              printf '%s\n' "$SSL_CERT" > ssl/tls.crt
+              printf '%s\n' "$SSL_KEY" > ssl/tls.key
+              chmod 600 ssl/tls.key
+              chmod 644 ssl/tls.crt
+              echo "SSL certificates updated from secrets"
+            else
+              rm -f ssl/tls.crt ssl/tls.key
+              echo "SSL secrets are empty: HTTPS certificates removed, app will run on HTTP"
+            fi
+
       - name: Restart app on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
