@@ -478,6 +478,26 @@ const eventTypeByShortcut = eventTypes.reduce((acc, event, index) => {
   return acc;
 }, {});
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+
+function generateId() {
+  const cryptoApi = globalThis.crypto;
+
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+
+  if (cryptoApi && typeof cryptoApi.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  return `id-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
 function normalizeTeamColor(color) {
   const nextColor = String(color || '').trim();
   return teamColorOptions.some((option) => option.value === nextColor) ? nextColor : defaultTeamColor;
@@ -491,12 +511,12 @@ function teamColorHex(color) {
 function defaultTeams() {
   return [
     {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: 'Команда 1',
       color: defaultTeamColor,
       players: [
         {
-          id: crypto.randomUUID(),
+          id: generateId(),
           name: 'Игрок 1',
         },
       ],
@@ -516,20 +536,20 @@ function ensureTeamsStructure(inputTeams) {
         ? team.players
             .filter((player) => player && typeof player === 'object')
             .map((player, playerIndex) => ({
-              id: player.id || crypto.randomUUID(),
+              id: player.id || generateId(),
               name: typeof player.name === 'string' && player.name.trim() ? player.name : `Игрок ${playerIndex + 1}`,
             }))
         : [];
 
       return {
-        id: team.id || crypto.randomUUID(),
+        id: team.id || generateId(),
         name: typeof team.name === 'string' && team.name.trim() ? team.name : `Команда ${teamIndex + 1}`,
         color: normalizeTeamColor(team.color),
         players: normalizedPlayers.length
           ? normalizedPlayers
           : [
               {
-                id: crypto.randomUUID(),
+                id: generateId(),
                 name: 'Игрок 1',
               },
             ],
@@ -1108,7 +1128,7 @@ function addEvent(type) {
   }
 
   events.value.push({
-    id: crypto.randomUUID(),
+    id: generateId(),
     videoTimeSec: currentTimeSec.value,
     type,
     playerId: selectedPlayerId.value,
@@ -1141,12 +1161,12 @@ function selectNextPlayer() {
 function addTeam() {
   const teamNumber = teams.value.length + 1;
   teams.value.push({
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: `Команда ${teamNumber}`,
     color: defaultTeamColor,
     players: [
       {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: 'Игрок 1',
       },
     ],
@@ -1275,7 +1295,7 @@ function addPlayer(teamId) {
       players: [
         ...team.players,
         {
-          id: crypto.randomUUID(),
+          id: generateId(),
           name: `Игрок ${team.players.length + 1}`,
         },
       ],
@@ -1423,7 +1443,7 @@ function toggleGameBoundary() {
   }
 
   gameRanges.value.push({
-    id: crypto.randomUUID(),
+    id: generateId(),
     startSec: currentTimeSec.value,
     endSec: null,
   });
