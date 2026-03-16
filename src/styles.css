@@ -316,6 +316,19 @@ button.secondary {
   margin: 0 0 0.7rem;
 }
 
+.logs-toolbar {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.logs-toolbar-row {
+  justify-content: flex-start;
+}
+
+.logs-filters-row {
+  padding-top: 0.1rem;
+}
+
 .logs-layout {
   display: grid;
   grid-template-columns: 40% 1fr;

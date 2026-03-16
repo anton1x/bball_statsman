@@ -139,8 +139,8 @@
 
       <section class="card logs-card">
       <h2 class="logs-title">{{ logsViewMode === 'history' ? 'История событий' : 'Статистика' }}</h2>
-      <div class="toolbar">
-        <div class="toolbar-actions">
+      <div class="logs-toolbar">
+        <div class="toolbar-actions logs-toolbar-row">
           <div class="view-switch" role="tablist" aria-label="Переключение вида блока событий">
             <button
               :class="['secondary', { active: logsViewMode === 'history' }]"
@@ -159,6 +159,9 @@
               Статистика
             </button>
           </div>
+          <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
+        </div>
+        <div class="toolbar-actions logs-toolbar-row logs-filters-row">
           <div class="games-filter-inline" v-if="games.length">
             <button class="secondary" @click="selectPreviousGameFilter" :disabled="!canSelectPreviousGameFilter">←</button>
             <select v-model="selectedGameFilter" aria-label="Фильтр по играм">
@@ -185,7 +188,6 @@
           >
             🔥
           </button>
-          <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
       </div>
 
