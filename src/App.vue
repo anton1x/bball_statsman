@@ -53,7 +53,7 @@
           <button class="secondary" @click="selectPreviousPlayer" :disabled="!canSelectPreviousPlayer">←</button>
           <select v-model="selectedPlayerId" aria-label="Выбор игрока для события">
             <option v-for="option in playerOptions" :key="option.id" :value="option.id">
-              {{ option.teamName }} · {{ option.playerName }}
+              {{ option.teamName }} · {{ option.playerName }} ({{ option.shortcut }})
             </option>
           </select>
           <button class="secondary" @click="selectNextPlayer" :disabled="!canSelectNextPlayer">→</button>
@@ -71,7 +71,7 @@
                 @click="addEvent(event.type)"
               >
                 <span class="event-icon" aria-hidden="true">{{ event.icon }}</span>
-                <span class="event-label">{{ event.label }}</span>
+                <span class="event-label">{{ event.label }} <small class="event-shortcut">{{ eventShortcutLabel(event.type) }}</small></span>
               </button>
             </div>
           </section>
@@ -139,8 +139,8 @@
 
       <section class="card logs-card">
       <h2 class="logs-title">{{ logsViewMode === 'history' ? 'История событий' : 'Статистика' }}</h2>
-      <div class="toolbar">
-        <div class="toolbar-actions">
+      <div class="logs-toolbar">
+        <div class="toolbar-actions logs-toolbar-row">
           <div class="view-switch" role="tablist" aria-label="Переключение вида блока событий">
             <button
               :class="['secondary', { active: logsViewMode === 'history' }]"
@@ -159,6 +159,9 @@
               Статистика
             </button>
           </div>
+          <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
+        </div>
+        <div class="toolbar-actions logs-toolbar-row logs-filters-row">
           <div class="games-filter-inline" v-if="games.length">
             <button class="secondary" @click="selectPreviousGameFilter" :disabled="!canSelectPreviousGameFilter">←</button>
             <select v-model="selectedGameFilter" aria-label="Фильтр по играм">
@@ -185,7 +188,6 @@
           >
             🔥
           </button>
-          <button v-if="logsViewMode === 'history'" class="secondary" @click="clearEvents" :disabled="events.length === 0">Очистить</button>
         </div>
       </div>
 
@@ -413,6 +415,8 @@ const shareLinkStatus = ref('');
 let syncInterval = null;
 let animationTimeout = null;
 let shareLinkStatusTimeout = null;
+let playerShortcutTimeout = null;
+let pendingPlayerShortcutTeamIndex = null;
 let vkPlayer = null;
 
 const eventGroups = [
@@ -456,6 +460,23 @@ const eventGroups = [
 ];
 
 const eventTypes = eventGroups.flatMap((group) => group.events);
+const eventShortcutKeys = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']'];
+const eventShortcutKeysRu = ['й', 'ц', 'у', 'к', 'е', 'н', 'г', 'ш', 'щ', 'з', 'х', 'ъ'];
+const eventShortcutByType = Object.fromEntries(eventTypes.map((event, index) => [event.type, eventShortcutKeys[index] || '']));
+const eventTypeByShortcut = eventTypes.reduce((acc, event, index) => {
+  const shortcutEn = eventShortcutKeys[index];
+  const shortcutRu = eventShortcutKeysRu[index];
+
+  if (shortcutEn) {
+    acc[shortcutEn] = event.type;
+  }
+
+  if (shortcutRu) {
+    acc[shortcutRu] = event.type;
+  }
+
+  return acc;
+}, {});
 const storageKey = 'bball-statsman:v1';
 function normalizeTeamColor(color) {
   const nextColor = String(color || '').trim();
@@ -559,11 +580,12 @@ const games = computed(() =>
 const activeGame = computed(() => games.value.find((game) => game.endSec === null) || null);
 
 const playerOptions = computed(() =>
-  teams.value.flatMap((team) =>
-    team.players.map((player) => ({
+  teams.value.flatMap((team, teamIndex) =>
+    team.players.map((player, playerIndex) => ({
       id: player.id,
       playerName: player.name,
       teamName: team.name,
+      shortcut: `${teamIndex + 1}${playerIndex + 1}`,
     })),
   ),
 );
@@ -1106,6 +1128,10 @@ function addEvent(type) {
   });
 }
 
+function eventShortcutLabel(type) {
+  const shortcut = eventShortcutByType[type];
+  return shortcut ? `[${shortcut}]` : '';
+}
 
 
 function selectPreviousPlayer() {
@@ -1168,6 +1194,65 @@ function chooseTeamColor(teamId, color) {
 
 function closeTeamColorPicker() {
   openTeamColorPickerId.value = '';
+}
+
+function resetPlayerShortcutState() {
+  if (playerShortcutTimeout) {
+    clearTimeout(playerShortcutTimeout);
+    playerShortcutTimeout = null;
+  }
+
+  pendingPlayerShortcutTeamIndex = null;
+}
+
+function handlePlayerShortcutKeydown(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) {
+    return;
+  }
+
+  const target = event.target;
+  if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) {
+    return;
+  }
+
+  const key = String(event.key || '').toLowerCase();
+  const eventType = eventTypeByShortcut[key];
+  if (eventType) {
+    addEvent(eventType);
+    event.preventDefault();
+    return;
+  }
+
+  const shortcutDigit = Number(event.key);
+  if (!Number.isInteger(shortcutDigit) || shortcutDigit < 1 || shortcutDigit > 9) {
+    return;
+  }
+
+  if (pendingPlayerShortcutTeamIndex === null) {
+    if (shortcutDigit > teams.value.length) {
+      resetPlayerShortcutState();
+      return;
+    }
+
+    pendingPlayerShortcutTeamIndex = shortcutDigit - 1;
+    if (playerShortcutTimeout) {
+      clearTimeout(playerShortcutTimeout);
+    }
+
+    playerShortcutTimeout = setTimeout(() => {
+      resetPlayerShortcutState();
+    }, 1000);
+    return;
+  }
+
+  const team = teams.value[pendingPlayerShortcutTeamIndex];
+  resetPlayerShortcutState();
+  if (!team || shortcutDigit > team.players.length) {
+    return;
+  }
+
+  selectedPlayerId.value = team.players[shortcutDigit - 1].id;
+  event.preventDefault();
 }
 
 function handleDocumentClick(event) {
@@ -1557,6 +1642,7 @@ watch(
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
   document.addEventListener('click', handleDocumentClick);
+  document.addEventListener('keydown', handlePlayerShortcutKeydown);
 
   if (!selectedPlayerId.value) {
     selectedPlayerId.value = playerOptions.value[0]?.id || '';
@@ -1580,8 +1666,10 @@ onBeforeUnmount(() => {
     clearTimeout(shareLinkStatusTimeout);
     shareLinkStatusTimeout = null;
   }
+  resetPlayerShortcutState();
   animatedEvent.value = null;
   window.removeEventListener('message', handlePlayerMessage);
   document.removeEventListener('click', handleDocumentClick);
+  document.removeEventListener('keydown', handlePlayerShortcutKeydown);
 });
 </script>
