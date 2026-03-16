@@ -163,6 +163,7 @@ button.secondary {
   justify-content: space-between;
   align-items: center;
   gap: 0.7rem;
+  padding-bottom: 1rem;
 }
 
 .toolbar-actions {
@@ -369,11 +370,13 @@ button.secondary {
 .highlight-filter-toggle,
 .event-highlight-button {
   font-size: 1.15rem;
+  opacity: 0.3;
 }
 
 .highlight-filter-toggle.active,
 .event-highlight-button.active {
   color: #f97316;
+  opacity: 1;
 }
 
 
