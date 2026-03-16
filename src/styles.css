@@ -554,3 +554,46 @@ pre {
   background: #fff;
   color: #182230;
 }
+
+
+.player-selector {
+  margin-bottom: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-selector select {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0.38rem 0.5rem;
+  background: #fff;
+  color: #182230;
+  min-width: 240px;
+}
+
+.event-player-label {
+  color: #475467;
+  font-size: 0.85rem;
+}
+
+.teams-toolbar {
+  margin: 0.8rem 0;
+}
+
+.teams-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.team-header,
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.team-header input,
+.player-row input {
+  flex: 1;
+}

@@ -43,7 +43,20 @@
       <div class="card controls-card">
         <div class="toolbar">
           <h2>События</h2>
-          <button class="secondary" @click="isSettingsOpen = true">Настройки</button>
+          <div class="toolbar-actions">
+            <button class="secondary" @click="isTeamsOpen = true">Команды</button>
+            <button class="secondary" @click="isSettingsOpen = true">Настройки</button>
+          </div>
+        </div>
+
+        <div class="player-selector" v-if="playerOptions.length">
+          <button class="secondary" @click="selectPreviousPlayer" :disabled="!canSelectPreviousPlayer">←</button>
+          <select v-model="selectedPlayerId" aria-label="Выбор игрока для события">
+            <option v-for="option in playerOptions" :key="option.id" :value="option.id">
+              {{ option.teamName }} · {{ option.playerName }}
+            </option>
+          </select>
+          <button class="secondary" @click="selectNextPlayer" :disabled="!canSelectNextPlayer">→</button>
         </div>
 
         <div class="event-blocks">
@@ -171,6 +184,7 @@
         <li v-for="event in filteredEvents" :key="event.id" class="event-item">
           <button class="time-link" @click="seekToEvent(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
+          <span class="event-player-label">{{ eventPlayerLabel(event) }}</span>
           <span v-if="eventGameLabel(event.videoTimeSec)" class="event-game-label">игра #{{ eventGameLabel(event.videoTimeSec) }}</span>
           <button
             :class="['icon-toggle', 'event-highlight-button', { active: event.isHighlighted }]"
@@ -260,6 +274,45 @@
         </div>
       </section>
     </div>
+
+    <div v-if="isTeamsOpen" class="settings-overlay" @click.self="isTeamsOpen = false">
+      <section class="settings-modal card" role="dialog" aria-modal="true" aria-label="Команды и игроки">
+        <div class="toolbar">
+          <h2>Команды и игроки</h2>
+          <button class="secondary" @click="isTeamsOpen = false">Закрыть</button>
+        </div>
+
+        <div class="teams-toolbar">
+          <button @click="addTeam">Добавить команду</button>
+        </div>
+
+        <div class="teams-list">
+          <section v-for="team in teams" :key="team.id" class="settings-group">
+            <div class="team-header">
+              <input
+                :value="team.name"
+                @input="renameTeam(team.id, $event.target.value)"
+                aria-label="Название команды"
+              />
+              <button class="secondary" :disabled="teams.length <= 1" @click="removeTeam(team.id)">Удалить</button>
+            </div>
+
+            <div class="settings-events">
+              <div v-for="player in team.players" :key="player.id" class="player-row">
+                <input
+                  :value="player.name"
+                  @input="renamePlayer(team.id, player.id, $event.target.value)"
+                  aria-label="Имя игрока"
+                />
+                <button class="secondary" :disabled="team.players.length <= 1" @click="removePlayer(team.id, player.id)">Удалить</button>
+              </div>
+            </div>
+
+            <button class="secondary" @click="addPlayer(team.id)">Добавить игрока</button>
+          </section>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -277,6 +330,9 @@ const activeVideoUrl = ref('');
 const gameRanges = ref([]);
 const selectedGameFilter = ref('all');
 const showOnlyHighlights = ref(false);
+const isTeamsOpen = ref(false);
+const teams = ref(defaultTeams());
+const selectedPlayerId = ref('');
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -333,6 +389,56 @@ const eventGroups = [
 const eventTypes = eventGroups.flatMap((group) => group.events);
 const storageKey = 'bball-statsman:v1';
 
+
+function defaultTeams() {
+  return [
+    {
+      id: crypto.randomUUID(),
+      name: 'Команда 1',
+      players: [
+        {
+          id: crypto.randomUUID(),
+          name: 'Игрок 1',
+        },
+      ],
+    },
+  ];
+}
+
+function ensureTeamsStructure(inputTeams) {
+  if (!Array.isArray(inputTeams) || !inputTeams.length) {
+    return defaultTeams();
+  }
+
+  const normalizedTeams = inputTeams
+    .filter((team) => team && typeof team === 'object')
+    .map((team, teamIndex) => {
+      const normalizedPlayers = Array.isArray(team.players)
+        ? team.players
+            .filter((player) => player && typeof player === 'object')
+            .map((player, playerIndex) => ({
+              id: player.id || crypto.randomUUID(),
+              name: typeof player.name === 'string' && player.name.trim() ? player.name : `Игрок ${playerIndex + 1}`,
+            }))
+        : [];
+
+      return {
+        id: team.id || crypto.randomUUID(),
+        name: typeof team.name === 'string' && team.name.trim() ? team.name : `Команда ${teamIndex + 1}`,
+        players: normalizedPlayers.length
+          ? normalizedPlayers
+          : [
+              {
+                id: crypto.randomUUID(),
+                name: 'Игрок 1',
+              },
+            ],
+      };
+    });
+
+  return normalizedTeams.length ? normalizedTeams : defaultTeams();
+}
+
 function defaultGroupVisibility() {
   return Object.fromEntries(eventGroups.map((group) => [group.id, true]));
 }
@@ -372,6 +478,19 @@ const games = computed(() =>
 );
 
 const activeGame = computed(() => games.value.find((game) => game.endSec === null) || null);
+
+const playerOptions = computed(() =>
+  teams.value.flatMap((team) =>
+    team.players.map((player) => ({
+      id: player.id,
+      playerName: player.name,
+      teamName: team.name,
+    })),
+  ),
+);
+const selectedPlayerIndex = computed(() => playerOptions.value.findIndex((option) => option.id === selectedPlayerId.value));
+const canSelectPreviousPlayer = computed(() => selectedPlayerIndex.value > 0);
+const canSelectNextPlayer = computed(() => selectedPlayerIndex.value >= 0 && selectedPlayerIndex.value < playerOptions.value.length - 1);
 
 const eventsByTime = computed(() =>
   events.value
@@ -522,6 +641,8 @@ function persistVideoState() {
         eventVisibility: eventVisibility.value,
         selectedGameFilter: selectedGameFilter.value,
         showOnlyHighlights: showOnlyHighlights.value,
+        teams: teams.value,
+        selectedPlayerId: selectedPlayerId.value,
       },
     };
 
@@ -569,6 +690,11 @@ function applyStoredVideoState(videoState) {
   const storedFilter = String(videoState?.settings?.selectedGameFilter || 'all');
   selectedGameFilter.value = storedFilter === 'all' || availableGameIds.includes(storedFilter) ? storedFilter : 'all';
   showOnlyHighlights.value = Boolean(videoState?.settings?.showOnlyHighlights);
+  teams.value = ensureTeamsStructure(videoState?.settings?.teams);
+
+  const firstPlayerId = playerOptions.value[0]?.id || '';
+  const storedPlayerId = String(videoState?.settings?.selectedPlayerId || '');
+  selectedPlayerId.value = playerOptions.value.some((player) => player.id === storedPlayerId) ? storedPlayerId : firstPlayerId;
 }
 
 function resetVideoState() {
@@ -578,6 +704,8 @@ function resetVideoState() {
   showOnlyHighlights.value = false;
   groupVisibility.value = defaultGroupVisibility();
   eventVisibility.value = defaultEventVisibility();
+  teams.value = defaultTeams();
+  selectedPlayerId.value = teams.value[0]?.players?.[0]?.id || '';
 }
 
 function parseVkEmbedUrl(url) {
@@ -857,8 +985,115 @@ function addEvent(type) {
     id: crypto.randomUUID(),
     videoTimeSec: currentTimeSec.value,
     type,
+    playerId: selectedPlayerId.value,
     isHighlighted: false,
   });
+}
+
+
+
+function selectPreviousPlayer() {
+  if (!canSelectPreviousPlayer.value) {
+    return;
+  }
+
+  selectedPlayerId.value = playerOptions.value[selectedPlayerIndex.value - 1].id;
+}
+
+function selectNextPlayer() {
+  if (!canSelectNextPlayer.value) {
+    return;
+  }
+
+  selectedPlayerId.value = playerOptions.value[selectedPlayerIndex.value + 1].id;
+}
+
+function addTeam() {
+  const teamNumber = teams.value.length + 1;
+  teams.value.push({
+    id: crypto.randomUUID(),
+    name: `Команда ${teamNumber}`,
+    players: [
+      {
+        id: crypto.randomUUID(),
+        name: 'Игрок 1',
+      },
+    ],
+  });
+}
+
+function renameTeam(teamId, nextName) {
+  teams.value = teams.value.map((team) => (team.id === teamId ? { ...team, name: nextName } : team));
+}
+
+function removeTeam(teamId) {
+  if (teams.value.length <= 1) {
+    return;
+  }
+
+  teams.value = teams.value.filter((team) => team.id !== teamId);
+}
+
+function addPlayer(teamId) {
+  teams.value = teams.value.map((team) => {
+    if (team.id !== teamId) {
+      return team;
+    }
+
+    return {
+      ...team,
+      players: [
+        ...team.players,
+        {
+          id: crypto.randomUUID(),
+          name: `Игрок ${team.players.length + 1}`,
+        },
+      ],
+    };
+  });
+}
+
+function renamePlayer(teamId, playerId, nextName) {
+  teams.value = teams.value.map((team) => {
+    if (team.id !== teamId) {
+      return team;
+    }
+
+    return {
+      ...team,
+      players: team.players.map((player) => (player.id === playerId ? { ...player, name: nextName } : player)),
+    };
+  });
+}
+
+function removePlayer(teamId, playerId) {
+  teams.value = teams.value.map((team) => {
+    if (team.id !== teamId || team.players.length <= 1) {
+      return team;
+    }
+
+    return {
+      ...team,
+      players: team.players.filter((player) => player.id !== playerId),
+    };
+  });
+}
+
+function eventPlayerLabel(event) {
+  const fallback = 'Неизвестный игрок';
+  const playerId = event?.playerId;
+  if (!playerId) {
+    return fallback;
+  }
+
+  for (const team of teams.value) {
+    const player = team.players.find((candidate) => candidate.id === playerId);
+    if (player) {
+      return `${team.name} · ${player.name}`;
+    }
+  }
+
+  return fallback;
 }
 
 function toggleEventHighlight(eventId) {
@@ -1024,7 +1259,7 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 });
 
 watch(
-  [events, gameRanges, selectedGameFilter, showOnlyHighlights, groupVisibility, eventVisibility],
+  [events, gameRanges, selectedGameFilter, showOnlyHighlights, groupVisibility, eventVisibility, teams, selectedPlayerId],
   () => {
     if (!isSessionStarted.value) {
       return;
@@ -1047,8 +1282,24 @@ watch(
   { deep: true },
 );
 
+
+
+watch(
+  teams,
+  () => {
+    if (!playerOptions.value.some((option) => option.id === selectedPlayerId.value)) {
+      selectedPlayerId.value = playerOptions.value[0]?.id || '';
+    }
+  },
+  { deep: true },
+);
+
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
+
+  if (!selectedPlayerId.value) {
+    selectedPlayerId.value = playerOptions.value[0]?.id || '';
+  }
 
   const initialVideoParam = getVideoQueryParamValue();
   if (initialVideoParam) {
