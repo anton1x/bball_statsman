@@ -633,13 +633,49 @@ pre {
   flex: 1;
 }
 
-.team-header select {
+.team-color-picker {
+  position: relative;
+}
+
+.team-color-trigger {
   border: 1px solid #d0d5dd;
-  border-radius: 8px;
-  padding: 0.3rem 0.35rem;
   background: #fff;
   color: #182230;
-  width: 2.6rem;
-  text-align: center;
-  font-size: 1rem;
+  width: 2.4rem;
+  min-height: 2.1rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.picker-dot {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.team-color-popover {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.14);
+  padding: 0.35rem;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 0.3rem;
+}
+
+.team-color-option {
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  width: 1.9rem;
+  min-height: 1.9rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }

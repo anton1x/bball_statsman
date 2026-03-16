@@ -327,16 +327,29 @@
                 @input="renameTeam(team.id, $event.target.value)"
                 aria-label="Название команды"
               />
-              <select :value="team.color" @change="setTeamColor(team.id, $event.target.value)" aria-label="Цвет команды">
-                <option
-                  v-for="color in teamColorOptions"
-                  :key="`${team.id}-${color.value}`"
-                  :value="color.value"
-                  :style="{ color: color.swatch }"
+              <div class="team-color-picker" @click.stop>
+                <button
+                  class="team-color-trigger"
+                  type="button"
+                  :aria-label="`Цвет команды: ${team.name}`"
+                  @click="toggleTeamColorPicker(team.id)"
                 >
-                  ■
-                </option>
-              </select>
+                  <span class="team-color-dot picker-dot" :style="{ backgroundColor: teamColorHex(team.color) }" aria-hidden="true"></span>
+                </button>
+                <div v-if="isTeamColorPickerOpen(team.id)" class="team-color-popover">
+                  <button
+                    v-for="color in teamColorOptions"
+                    :key="`${team.id}-${color.value}`"
+                    type="button"
+                    class="team-color-option"
+                    :title="color.label"
+                    :aria-label="`Выбрать цвет: ${color.label}`"
+                    @click="chooseTeamColor(team.id, color.value)"
+                  >
+                    <span class="team-color-dot picker-dot" :style="{ backgroundColor: color.swatch }" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </div>
               <button class="secondary" :disabled="teams.length <= 1" @click="removeTeam(team.id)">Удалить</button>
             </div>
 
@@ -388,6 +401,7 @@ const isTeamsOpen = ref(false);
 const teams = ref(defaultTeams());
 const selectedPlayerId = ref('');
 const assigningPlayerEventId = ref('');
+const openTeamColorPickerId = ref('');
 
 const events = ref([]);
 const currentTimeSec = ref(0);
@@ -1139,6 +1153,31 @@ function setTeamColor(teamId, color) {
       : team,
   );
 }
+function isTeamColorPickerOpen(teamId) {
+  return openTeamColorPickerId.value === teamId;
+}
+
+function toggleTeamColorPicker(teamId) {
+  openTeamColorPickerId.value = openTeamColorPickerId.value === teamId ? '' : teamId;
+}
+
+function chooseTeamColor(teamId, color) {
+  setTeamColor(teamId, color);
+  openTeamColorPickerId.value = '';
+}
+
+function closeTeamColorPicker() {
+  openTeamColorPickerId.value = '';
+}
+
+function handleDocumentClick(event) {
+  if (event.target?.closest?.('.team-color-picker')) {
+    return;
+  }
+
+  closeTeamColorPicker();
+}
+
 
 function removeTeam(teamId) {
   if (teams.value.length <= 1) {
@@ -1146,6 +1185,10 @@ function removeTeam(teamId) {
   }
 
   teams.value = teams.value.filter((team) => team.id !== teamId);
+
+  if (openTeamColorPickerId.value === teamId) {
+    closeTeamColorPicker();
+  }
 }
 
 function addPlayer(teamId) {
@@ -1513,6 +1556,7 @@ watch(
 
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
+  document.addEventListener('click', handleDocumentClick);
 
   if (!selectedPlayerId.value) {
     selectedPlayerId.value = playerOptions.value[0]?.id || '';
@@ -1538,5 +1582,6 @@ onBeforeUnmount(() => {
   }
   animatedEvent.value = null;
   window.removeEventListener('message', handlePlayerMessage);
+  document.removeEventListener('click', handleDocumentClick);
 });
 </script>
