@@ -67,6 +67,11 @@ sudo -u deploy chmod 600 /home/deploy/.ssh/authorized_keys
 Опционально:
 
 - `VPS_SSH_PORT` — SSH-порт (если не 22).
+- `VPS_SSL_CERT` — TLS сертификат (PEM), например fullchain от GlobalSign.
+- `VPS_SSL_KEY` — приватный ключ TLS (PEM).
+
+> Если `VPS_SSL_CERT` и `VPS_SSL_KEY` заполнены, workflow создаст файлы `ssl/tls.crt` и `ssl/tls.key` на VPS, и nginx автоматически включит HTTPS (443) + редирект с HTTP на HTTPS.
+> Если SSL-секреты пустые — контейнер запустится только на HTTP (порт 80).
 
 ## 5) Открыть порты
 
@@ -75,6 +80,7 @@ sudo -u deploy chmod 600 /home/deploy/.ssh/authorized_keys
 ```bash
 sudo ufw allow OpenSSH
 sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 sudo ufw enable
 sudo ufw status
 ```
@@ -82,12 +88,10 @@ sudo ufw status
 ## 6) Первый деплой
 
 1. Запушьте изменения в `main` (или запустите workflow вручную через `workflow_dispatch`).
-2. Workflow `Deploy app to VPS (frontend + backend)` скопирует frontend+backend файлы и `docker-compose.yml` на сервер.
-3. На сервере выполнится:
-
-```bash
-docker compose up -d --build
-```
+2. Workflow `Deploy app to VPS (frontend + backend)`:
+   - скопирует frontend+backend файлы и `docker-compose.yml` на сервер;
+   - (опционально) запишет SSL-сертификаты из секретов в `${VPS_APP_DIR}/ssl`;
+   - выполнит `docker compose up -d --build`.
 
 Проверка на сервере:
 
@@ -98,9 +102,16 @@ docker compose logs -f frontend
 docker compose logs -f backend
 ```
 
+Проверить сертификат:
+
+```bash
+openssl s_client -connect your-domain:443 -servername your-domain </dev/null 2>/dev/null | openssl x509 -noout -issuer -subject -dates
+```
+
 ## 7) Как это работает теперь
 
-- Frontend больше не деплоится в GitHub Pages.
+- Frontend не деплоится в GitHub Pages.
 - Frontend собирается в Docker-образ и отдается через `nginx` в контейнере `frontend`.
 - Запросы `/api/*` из браузера проксируются контейнером `frontend` в `backend:8080` внутри docker-сети.
-- Backend доступен только внутри docker-сети (наружу публикуется только 80 порт фронтенда).
+- Backend доступен только внутри docker-сети (наружу публикуются только 80 и 443 порты фронтенда).
+- HTTPS включается автоматически при наличии файлов `ssl/tls.crt` и `ssl/tls.key`.
