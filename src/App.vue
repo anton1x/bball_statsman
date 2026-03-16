@@ -328,8 +328,13 @@
                 aria-label="Название команды"
               />
               <select :value="team.color" @change="setTeamColor(team.id, $event.target.value)" aria-label="Цвет команды">
-                <option v-for="color in teamColorOptions" :key="`${team.id}-${color.value}`" :value="color.value">
-                  {{ color.label }}
+                <option
+                  v-for="color in teamColorOptions"
+                  :key="`${team.id}-${color.value}`"
+                  :value="color.value"
+                  :style="{ color: color.swatch }"
+                >
+                  ■
                 </option>
               </select>
               <button class="secondary" :disabled="teams.length <= 1" @click="removeTeam(team.id)">Удалить</button>

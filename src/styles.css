@@ -636,7 +636,10 @@ pre {
 .team-header select {
   border: 1px solid #d0d5dd;
   border-radius: 8px;
-  padding: 0.38rem 0.45rem;
+  padding: 0.3rem 0.35rem;
   background: #fff;
   color: #182230;
+  width: 2.6rem;
+  text-align: center;
+  font-size: 1rem;
 }
