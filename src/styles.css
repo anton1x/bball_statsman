@@ -170,6 +170,7 @@ button.secondary {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  flex-wrap: wrap;
 }
 
 .view-switch {
@@ -556,4 +557,128 @@ pre {
   padding: 0.38rem 0.5rem;
   background: #fff;
   color: #182230;
+}
+
+
+.player-selector {
+  margin-bottom: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-selector select {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0.38rem 0.5rem;
+  background: #fff;
+  color: #182230;
+  min-width: 240px;
+}
+
+.event-player-label {
+  color: #475467;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.team-color-dot {
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 2px;
+  border: 1px solid rgba(24, 34, 48, 0.25);
+  flex-shrink: 0;
+}
+
+
+.unknown-player-assign {
+  display: inline-flex;
+  align-items: center;
+}
+
+.event-player-link {
+  background: transparent;
+  border: none;
+  color: #b42318;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.event-player-select {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0.25rem 0.4rem;
+  background: #fff;
+  color: #182230;
+}
+
+.teams-toolbar {
+  margin: 0.8rem 0;
+}
+
+.teams-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.team-header,
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.team-header input,
+.player-row input {
+  flex: 1;
+}
+
+.team-color-picker {
+  position: relative;
+}
+
+.team-color-trigger {
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  color: #182230;
+  width: 2.4rem;
+  min-height: 2.1rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.picker-dot {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.team-color-popover {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.14);
+  padding: 0.35rem;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 0.3rem;
+}
+
+.team-color-option {
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  width: 1.9rem;
+  min-height: 1.9rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
