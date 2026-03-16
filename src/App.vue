@@ -477,7 +477,7 @@ const eventTypeByShortcut = eventTypes.reduce((acc, event, index) => {
 
   return acc;
 }, {});
-const storageKey = 'bball-statsman:v1';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
 function normalizeTeamColor(color) {
   const nextColor = String(color || '').trim();
   return teamColorOptions.some((option) => option.value === nextColor) ? nextColor : defaultTeamColor;
@@ -562,7 +562,7 @@ const visibleEventGroups = computed(() =>
 
 const eventMetaByType = Object.fromEntries(eventTypes.map((event) => [event.type, event]));
 const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
-const savedVideos = ref(loadSavedVideos());
+const savedVideos = ref([]);
 
 const canStart = computed(() => Boolean(videoUrl.value));
 const serializedEvents = computed(() => JSON.stringify(events.value, null, 2));
@@ -710,93 +710,81 @@ function normalizeVideoUrl(url) {
   }
 }
 
-function loadSavedVideos() {
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`API request failed with status ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
+async function refreshSavedVideos() {
   try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!parsed?.videos || typeof parsed.videos !== 'object') {
-      return [];
-    }
-
-    return Object.values(parsed.videos)
-      .filter((video) => typeof video?.url === 'string')
-      .map((video) => ({
-        url: video.url,
-        eventsCount: Array.isArray(video.events) ? video.events.length : 0,
-        updatedAt: typeof video.updatedAt === 'number' ? video.updatedAt : 0,
-      }))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+    const payload = await apiRequest('/api/videos');
+    savedVideos.value = Array.isArray(payload?.videos) ? payload.videos : [];
   } catch {
-    return [];
+    savedVideos.value = [];
   }
 }
 
-function loadVideoState(videoUrlToLoad) {
+async function loadVideoState(videoUrlToLoad) {
   try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw);
-    return parsed?.videos?.[videoUrlToLoad] || null;
+    const payload = await apiRequest(`/api/videos/state?url=${encodeURIComponent(videoUrlToLoad)}`);
+    return payload?.state || null;
   } catch {
     return null;
   }
 }
 
-function persistVideoState() {
+async function persistVideoState() {
   if (!activeVideoUrl.value) {
     return;
   }
 
   try {
-    const raw = localStorage.getItem(storageKey);
-    const parsed = raw ? JSON.parse(raw) : {};
-    const videos = parsed?.videos && typeof parsed.videos === 'object' ? parsed.videos : {};
-
-    videos[activeVideoUrl.value] = {
-      url: activeVideoUrl.value,
-      updatedAt: Date.now(),
-      events: events.value,
-      games: gameRanges.value,
-      settings: {
-        groupVisibility: groupVisibility.value,
-        eventVisibility: eventVisibility.value,
-        selectedGameFilter: selectedGameFilter.value,
-        selectedRosterFilter: selectedRosterFilter.value,
-        showOnlyHighlights: showOnlyHighlights.value,
-        teams: teams.value,
-        selectedPlayerId: selectedPlayerId.value,
-      },
-    };
-
-    localStorage.setItem(storageKey, JSON.stringify({ videos }));
-    savedVideos.value = loadSavedVideos();
+    await apiRequest('/api/videos/state', {
+      method: 'PUT',
+      body: JSON.stringify({
+        state: {
+          url: activeVideoUrl.value,
+          events: events.value,
+          games: gameRanges.value,
+          settings: {
+            groupVisibility: groupVisibility.value,
+            eventVisibility: eventVisibility.value,
+            selectedGameFilter: selectedGameFilter.value,
+            selectedRosterFilter: selectedRosterFilter.value,
+            showOnlyHighlights: showOnlyHighlights.value,
+            teams: teams.value,
+            selectedPlayerId: selectedPlayerId.value,
+          },
+        },
+      }),
+    });
+    await refreshSavedVideos();
   } catch {
-    // ignore storage errors
+    // ignore persistence errors
   }
 }
 
-function removeSavedVideo(videoUrlToRemove) {
+async function removeSavedVideo(videoUrlToRemove) {
   try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) {
-      return;
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!parsed?.videos || typeof parsed.videos !== 'object') {
-      return;
-    }
-
-    delete parsed.videos[videoUrlToRemove];
-    localStorage.setItem(storageKey, JSON.stringify({ videos: parsed.videos }));
-    savedVideos.value = loadSavedVideos();
+    await apiRequest(`/api/videos?url=${encodeURIComponent(videoUrlToRemove)}`, {
+      method: 'DELETE',
+    });
+    await refreshSavedVideos();
   } catch {
     // ignore storage errors
   }
@@ -934,7 +922,7 @@ async function copyShareLink() {
   setShareStatus(isCopied ? 'Ссылка скопирована.' : 'Не удалось скопировать ссылку.');
 }
 
-function startSession(selectedUrl = videoUrl.value) {
+async function startSession(selectedUrl = videoUrl.value) {
   const normalizedUrl = normalizeVideoUrl(selectedUrl);
   const parsedUrl = parseVkEmbedUrl(normalizedUrl);
 
@@ -950,7 +938,7 @@ function startSession(selectedUrl = videoUrl.value) {
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
   animatedEvent.value = null;
-  applyStoredVideoState(loadVideoState(normalizedUrl));
+  applyStoredVideoState(await loadVideoState(normalizedUrl));
   if (selectedGameFilter.value !== 'all' && !games.value.some((game) => String(game.number) === selectedGameFilter.value)) {
     selectedGameFilter.value = 'all';
   }
@@ -960,7 +948,7 @@ function startSession(selectedUrl = videoUrl.value) {
   }
   isSessionStarted.value = true;
   syncVideoQueryParam(normalizedUrl);
-  persistVideoState();
+  await persistVideoState();
 }
 
 function resetSession() {
@@ -1643,6 +1631,8 @@ onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('keydown', handlePlayerShortcutKeydown);
+
+  refreshSavedVideos();
 
   if (!selectedPlayerId.value) {
     selectedPlayerId.value = playerOptions.value[0]?.id || '';

@@ -1,0 +1,13 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: bball-statsman-backend
+    environment:
+      LISTEN_ADDR: ":8080"
+      DB_PATH: "/app/data/statsman.json"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend_data:/app/data
+    restart: unless-stopped
