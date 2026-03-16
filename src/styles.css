@@ -407,6 +407,13 @@ button.secondary {
   font-weight: 600;
 }
 
+.event-shortcut {
+  color: #98a2b3;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+
 .delete-event-button {
   margin-left: auto;
   padding: 0.35rem 0.55rem;

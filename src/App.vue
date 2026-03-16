@@ -53,7 +53,7 @@
           <button class="secondary" @click="selectPreviousPlayer" :disabled="!canSelectPreviousPlayer">←</button>
           <select v-model="selectedPlayerId" aria-label="Выбор игрока для события">
             <option v-for="option in playerOptions" :key="option.id" :value="option.id">
-              {{ option.teamName }} · {{ option.playerName }}
+              {{ option.teamName }} · {{ option.playerName }} ({{ option.shortcut }})
             </option>
           </select>
           <button class="secondary" @click="selectNextPlayer" :disabled="!canSelectNextPlayer">→</button>
@@ -71,7 +71,7 @@
                 @click="addEvent(event.type)"
               >
                 <span class="event-icon" aria-hidden="true">{{ event.icon }}</span>
-                <span class="event-label">{{ event.label }}</span>
+                <span class="event-label">{{ event.label }} <small class="event-shortcut">{{ eventShortcutLabel(event.type) }}</small></span>
               </button>
             </div>
           </section>
@@ -460,6 +460,13 @@ const eventGroups = [
 ];
 
 const eventTypes = eventGroups.flatMap((group) => group.events);
+const eventShortcutKeys = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']'];
+const eventShortcutByType = Object.fromEntries(eventTypes.map((event, index) => [event.type, eventShortcutKeys[index] || '']));
+const eventTypeByShortcut = Object.fromEntries(
+  eventTypes
+    .map((event, index) => [eventShortcutKeys[index], event.type])
+    .filter(([shortcut]) => Boolean(shortcut)),
+);
 const storageKey = 'bball-statsman:v1';
 function normalizeTeamColor(color) {
   const nextColor = String(color || '').trim();
@@ -563,11 +570,12 @@ const games = computed(() =>
 const activeGame = computed(() => games.value.find((game) => game.endSec === null) || null);
 
 const playerOptions = computed(() =>
-  teams.value.flatMap((team) =>
-    team.players.map((player) => ({
+  teams.value.flatMap((team, teamIndex) =>
+    team.players.map((player, playerIndex) => ({
       id: player.id,
       playerName: player.name,
       teamName: team.name,
+      shortcut: `${teamIndex + 1}${playerIndex + 1}`,
     })),
   ),
 );
@@ -1110,6 +1118,10 @@ function addEvent(type) {
   });
 }
 
+function eventShortcutLabel(type) {
+  const shortcut = eventShortcutByType[type];
+  return shortcut ? `[${shortcut}]` : '';
+}
 
 
 function selectPreviousPlayer() {
@@ -1190,6 +1202,14 @@ function handlePlayerShortcutKeydown(event) {
 
   const target = event.target;
   if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) {
+    return;
+  }
+
+  const key = String(event.key || '').toLowerCase();
+  const eventType = eventTypeByShortcut[key];
+  if (eventType) {
+    addEvent(eventType);
+    event.preventDefault();
     return;
   }
 
