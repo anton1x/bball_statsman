@@ -576,6 +576,17 @@ pre {
 .event-player-label {
   color: #475467;
   font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.team-color-dot {
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 2px;
+  border: 1px solid rgba(24, 34, 48, 0.25);
+  flex-shrink: 0;
 }
 
 
@@ -620,4 +631,12 @@ pre {
 .team-header input,
 .player-row input {
   flex: 1;
+}
+
+.team-header select {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0.38rem 0.45rem;
+  background: #fff;
+  color: #182230;
 }

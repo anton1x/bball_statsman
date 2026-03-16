@@ -193,7 +193,10 @@
         <li v-for="event in filteredEvents" :key="event.id" class="event-item">
           <button class="time-link" @click="seekToEvent(event.videoTimeSec)">{{ formatSeconds(event.videoTimeSec) }}</button>
           <span :class="['event-name', toneClass(event.type)]">{{ eventLabel(event.type) }}</span>
-          <span v-if="!isUnknownEventPlayer(event)" class="event-player-label">{{ eventPlayerLabel(event) }}</span>
+          <span v-if="!isUnknownEventPlayer(event)" class="event-player-label">
+            <span class="team-color-dot" :style="{ backgroundColor: eventPlayerTeamColor(event) }" aria-hidden="true"></span>
+            {{ eventPlayerName(event) }}
+          </span>
           <div v-else class="unknown-player-assign">
             <button
               v-if="assigningPlayerEventId !== event.id"
@@ -324,6 +327,11 @@
                 @input="renameTeam(team.id, $event.target.value)"
                 aria-label="Название команды"
               />
+              <select :value="team.color" @change="setTeamColor(team.id, $event.target.value)" aria-label="Цвет команды">
+                <option v-for="color in teamColorOptions" :key="`${team.id}-${color.value}`" :value="color.value">
+                  {{ color.label }}
+                </option>
+              </select>
               <button class="secondary" :disabled="teams.length <= 1" @click="removeTeam(team.id)">Удалить</button>
             </div>
 
@@ -348,6 +356,16 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+
+const teamColorOptions = [
+  { value: 'lime', label: 'Салатовый', swatch: '#84cc16' },
+  { value: 'orange', label: 'Оранжевый', swatch: '#f97316' },
+  { value: 'black', label: 'Черный', swatch: '#111827' },
+  { value: 'blue', label: 'Синий', swatch: '#2563eb' },
+  { value: 'red', label: 'Красный', swatch: '#dc2626' },
+  { value: 'yellow', label: 'Желтый', swatch: '#facc15' },
+];
+const defaultTeamColor = teamColorOptions[0].value;
 
 const videoUrl = ref('');
 const embedUrl = ref('');
@@ -420,6 +438,14 @@ const eventGroups = [
 
 const eventTypes = eventGroups.flatMap((group) => group.events);
 const storageKey = 'bball-statsman:v1';
+function normalizeTeamColor(color) {
+  const nextColor = String(color || '').trim();
+  return teamColorOptions.some((option) => option.value === nextColor) ? nextColor : defaultTeamColor;
+}
+
+function teamColorHex(color) {
+  return teamColorOptions.find((option) => option.value === color)?.swatch || teamColorOptions[0].swatch;
+}
 
 
 function defaultTeams() {
@@ -427,6 +453,7 @@ function defaultTeams() {
     {
       id: crypto.randomUUID(),
       name: 'Команда 1',
+      color: defaultTeamColor,
       players: [
         {
           id: crypto.randomUUID(),
@@ -457,6 +484,7 @@ function ensureTeamsStructure(inputTeams) {
       return {
         id: team.id || crypto.randomUUID(),
         name: typeof team.name === 'string' && team.name.trim() ? team.name : `Команда ${teamIndex + 1}`,
+        color: normalizeTeamColor(team.color),
         players: normalizedPlayers.length
           ? normalizedPlayers
           : [
@@ -1082,6 +1110,7 @@ function addTeam() {
   teams.value.push({
     id: crypto.randomUUID(),
     name: `Команда ${teamNumber}`,
+    color: defaultTeamColor,
     players: [
       {
         id: crypto.randomUUID(),
@@ -1093,6 +1122,17 @@ function addTeam() {
 
 function renameTeam(teamId, nextName) {
   teams.value = teams.value.map((team) => (team.id === teamId ? { ...team, name: nextName } : team));
+}
+
+function setTeamColor(teamId, color) {
+  teams.value = teams.value.map((team) =>
+    team.id === teamId
+      ? {
+          ...team,
+          color: normalizeTeamColor(color),
+        }
+      : team,
+  );
 }
 
 function removeTeam(teamId) {
@@ -1148,8 +1188,14 @@ function removePlayer(teamId, playerId) {
   });
 }
 
-function eventPlayerLabel(event) {
-  const fallback = 'Неизвестный игрок';
+function eventPlayerMeta(event) {
+  const fallback = {
+    label: 'Неизвестный игрок',
+    playerName: 'Неизвестный игрок',
+    teamColor: teamColorHex(defaultTeamColor),
+    isUnknown: true,
+  };
+
   const playerId = event?.playerId;
   if (!playerId) {
     return fallback;
@@ -1158,16 +1204,32 @@ function eventPlayerLabel(event) {
   for (const team of teams.value) {
     const player = team.players.find((candidate) => candidate.id === playerId);
     if (player) {
-      return `${team.name} · ${player.name}`;
+      return {
+        label: `${team.name} · ${player.name}`,
+        playerName: player.name,
+        teamColor: teamColorHex(team.color),
+        isUnknown: false,
+      };
     }
   }
 
   return fallback;
 }
 
+function eventPlayerLabel(event) {
+  return eventPlayerMeta(event).label;
+}
+
+function eventPlayerName(event) {
+  return eventPlayerMeta(event).playerName;
+}
+
+function eventPlayerTeamColor(event) {
+  return eventPlayerMeta(event).teamColor;
+}
 
 function isUnknownEventPlayer(event) {
-  return eventPlayerLabel(event) === 'Неизвестный игрок';
+  return eventPlayerMeta(event).isUnknown;
 }
 
 function startAssignEventPlayer(eventId) {
