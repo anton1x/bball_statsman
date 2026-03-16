@@ -461,12 +461,22 @@ const eventGroups = [
 
 const eventTypes = eventGroups.flatMap((group) => group.events);
 const eventShortcutKeys = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']'];
+const eventShortcutKeysRu = ['й', 'ц', 'у', 'к', 'е', 'н', 'г', 'ш', 'щ', 'з', 'х', 'ъ'];
 const eventShortcutByType = Object.fromEntries(eventTypes.map((event, index) => [event.type, eventShortcutKeys[index] || '']));
-const eventTypeByShortcut = Object.fromEntries(
-  eventTypes
-    .map((event, index) => [eventShortcutKeys[index], event.type])
-    .filter(([shortcut]) => Boolean(shortcut)),
-);
+const eventTypeByShortcut = eventTypes.reduce((acc, event, index) => {
+  const shortcutEn = eventShortcutKeys[index];
+  const shortcutRu = eventShortcutKeysRu[index];
+
+  if (shortcutEn) {
+    acc[shortcutEn] = event.type;
+  }
+
+  if (shortcutRu) {
+    acc[shortcutRu] = event.type;
+  }
+
+  return acc;
+}, {});
 const storageKey = 'bball-statsman:v1';
 function normalizeTeamColor(color) {
   const nextColor = String(color || '').trim();
