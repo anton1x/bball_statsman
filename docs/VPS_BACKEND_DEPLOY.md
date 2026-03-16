@@ -1,6 +1,6 @@
-# Backend deploy on VPS (GitHub Actions + Docker Compose)
+# Deploy frontend + backend on VPS (GitHub Actions + Docker Compose)
 
-Ниже минимальная инструкция, чтобы автодеплой бэкенда с GitHub Actions заработал.
+Ниже инструкция для автодеплоя всего приложения (frontend + backend) на один сервер в `/opt/bball_statsman`.
 
 ## 1) Подготовить сервер
 
@@ -34,8 +34,8 @@ docker compose version
 ```bash
 sudo adduser --disabled-password --gecos "" deploy
 sudo usermod -aG docker deploy
-sudo mkdir -p /opt/bball-statsman
-sudo chown -R deploy:deploy /opt/bball-statsman
+sudo mkdir -p /opt/bball_statsman
+sudo chown -R deploy:deploy /opt/bball_statsman
 ```
 
 ## 3) Настроить SSH-ключ для GitHub Actions
@@ -62,19 +62,19 @@ sudo -u deploy chmod 600 /home/deploy/.ssh/authorized_keys
 - `VPS_HOST` — IP/домен сервера.
 - `VPS_USER` — пользователь, например `deploy`.
 - `VPS_SSH_KEY` — приватный ключ из `gha_deploy_key` (целиком, включая BEGIN/END).
-- `VPS_APP_DIR` — директория проекта на сервере, например `/opt/bball-statsman`.
+- `VPS_APP_DIR` — директория проекта на сервере: `/opt/bball_statsman`.
 
 Опционально:
 
 - `VPS_SSH_PORT` — SSH-порт (если не 22).
 
-## 5) Открыть порт приложения
+## 5) Открыть порты
 
 Если используете UFW:
 
 ```bash
 sudo ufw allow OpenSSH
-sudo ufw allow 8080/tcp
+sudo ufw allow 80/tcp
 sudo ufw enable
 sudo ufw status
 ```
@@ -82,29 +82,25 @@ sudo ufw status
 ## 6) Первый деплой
 
 1. Запушьте изменения в `main` (или запустите workflow вручную через `workflow_dispatch`).
-2. Workflow `Deploy backend to VPS` скопирует `backend/` и `docker-compose.yml` на сервер.
+2. Workflow `Deploy app to VPS (frontend + backend)` скопирует frontend+backend файлы и `docker-compose.yml` на сервер.
 3. На сервере выполнится:
 
 ```bash
-docker compose up -d --build backend
+docker compose up -d --build
 ```
 
 Проверка на сервере:
 
 ```bash
-cd /opt/bball-statsman
+cd /opt/bball_statsman
 docker compose ps
+docker compose logs -f frontend
 docker compose logs -f backend
 ```
 
-## 7) Подключение фронтенда к VPS API
+## 7) Как это работает теперь
 
-Для GitHub Pages задайте в Secrets/Variables (или в коде) URL вашего API:
-
-- `VITE_API_BASE_URL=https://your-domain-or-ip:8080`
-
-И передавайте это значение в frontend build workflow (если нужно через `env` в шаге `npm run build`).
-
----
-
-С текущей конфигурацией фронтенд уже деплоится в GitHub Pages через `.github/workflows/deploy-pages.yml`, а новый workflow отвечает только за backend на VPS.
+- Frontend больше не деплоится в GitHub Pages.
+- Frontend собирается в Docker-образ и отдается через `nginx` в контейнере `frontend`.
+- Запросы `/api/*` из браузера проксируются контейнером `frontend` в `backend:8080` внутри docker-сети.
+- Backend доступен только внутри docker-сети (наружу публикуется только 80 порт фронтенда).
