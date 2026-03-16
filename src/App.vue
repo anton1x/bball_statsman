@@ -415,6 +415,8 @@ const shareLinkStatus = ref('');
 let syncInterval = null;
 let animationTimeout = null;
 let shareLinkStatusTimeout = null;
+let playerShortcutTimeout = null;
+let pendingPlayerShortcutTeamIndex = null;
 let vkPlayer = null;
 
 const eventGroups = [
@@ -1172,6 +1174,57 @@ function closeTeamColorPicker() {
   openTeamColorPickerId.value = '';
 }
 
+function resetPlayerShortcutState() {
+  if (playerShortcutTimeout) {
+    clearTimeout(playerShortcutTimeout);
+    playerShortcutTimeout = null;
+  }
+
+  pendingPlayerShortcutTeamIndex = null;
+}
+
+function handlePlayerShortcutKeydown(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) {
+    return;
+  }
+
+  const target = event.target;
+  if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) {
+    return;
+  }
+
+  const shortcutDigit = Number(event.key);
+  if (!Number.isInteger(shortcutDigit) || shortcutDigit < 1 || shortcutDigit > 9) {
+    return;
+  }
+
+  if (pendingPlayerShortcutTeamIndex === null) {
+    if (shortcutDigit > teams.value.length) {
+      resetPlayerShortcutState();
+      return;
+    }
+
+    pendingPlayerShortcutTeamIndex = shortcutDigit - 1;
+    if (playerShortcutTimeout) {
+      clearTimeout(playerShortcutTimeout);
+    }
+
+    playerShortcutTimeout = setTimeout(() => {
+      resetPlayerShortcutState();
+    }, 1000);
+    return;
+  }
+
+  const team = teams.value[pendingPlayerShortcutTeamIndex];
+  resetPlayerShortcutState();
+  if (!team || shortcutDigit > team.players.length) {
+    return;
+  }
+
+  selectedPlayerId.value = team.players[shortcutDigit - 1].id;
+  event.preventDefault();
+}
+
 function handleDocumentClick(event) {
   if (event.target?.closest?.('.team-color-picker')) {
     return;
@@ -1559,6 +1612,7 @@ watch(
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
   document.addEventListener('click', handleDocumentClick);
+  document.addEventListener('keydown', handlePlayerShortcutKeydown);
 
   if (!selectedPlayerId.value) {
     selectedPlayerId.value = playerOptions.value[0]?.id || '';
@@ -1582,8 +1636,10 @@ onBeforeUnmount(() => {
     clearTimeout(shareLinkStatusTimeout);
     shareLinkStatusTimeout = null;
   }
+  resetPlayerShortcutState();
   animatedEvent.value = null;
   window.removeEventListener('message', handlePlayerMessage);
   document.removeEventListener('click', handleDocumentClick);
+  document.removeEventListener('keydown', handlePlayerShortcutKeydown);
 });
 </script>
