@@ -776,6 +776,20 @@ async function loadVideoState(videoUrlToLoad) {
   }
 }
 
+async function loadVideoStateVersion(videoUrlToLoad) {
+  try {
+    const payload = await apiRequest(`/api/videos/state/version?url=${encodeURIComponent(videoUrlToLoad)}`);
+    if (!payload?.exists) {
+      return null;
+    }
+
+    const version = Number(payload?.version || 0);
+    return Number.isFinite(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildSettingsSnapshot() {
   return {
     groupVisibility: groupVisibility.value,
@@ -863,14 +877,18 @@ async function syncFromServer() {
     return;
   }
 
+  const remoteVersion = await loadVideoStateVersion(activeVideoUrl.value);
+  if (remoteVersion === null || remoteVersion <= lastKnownVersion) {
+    return;
+  }
+
   const next = await loadVideoState(activeVideoUrl.value);
-  const remoteVersion = Number(next?.version || 0);
-  if (!next || remoteVersion <= lastKnownVersion) {
+  if (!next) {
     return;
   }
 
   applyStoredVideoState(next, { fromRemote: true });
-  lastKnownVersion = remoteVersion;
+  lastKnownVersion = Number(next.version || 0);
 }
 
 async function removeSavedVideo(videoUrlToRemove) {
@@ -1078,7 +1096,7 @@ function startRemoteSync() {
   stopRemoteSync();
   remoteSyncInterval = setInterval(() => {
     syncFromServer();
-  }, 3000);
+  }, 5000);
 }
 
 function stopRemoteSync() {

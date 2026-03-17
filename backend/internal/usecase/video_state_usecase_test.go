@@ -87,3 +87,29 @@ func TestApplyOperations_SettingsAndGamesReplace(t *testing.T) {
 		t.Fatalf("unexpected settings teams: %#v", state.Settings.Teams)
 	}
 }
+
+func TestGetStateVersion(t *testing.T) {
+	repo := newInMemoryRepo()
+	uc := NewVideoStateUseCase(repo)
+	ctx := context.Background()
+
+	version, exists, err := uc.GetStateVersion(ctx, "https://vkvideo.ru/video-3_3")
+	if err != nil {
+		t.Fatalf("get missing version: %v", err)
+	}
+	if exists || version != 0 {
+		t.Fatalf("expected missing state with version 0, got exists=%v version=%d", exists, version)
+	}
+
+	if err := uc.SaveState(ctx, domain.VideoState{URL: "https://vkvideo.ru/video-3_3"}); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	version, exists, err = uc.GetStateVersion(ctx, "https://vkvideo.ru/video-3_3")
+	if err != nil {
+		t.Fatalf("get version: %v", err)
+	}
+	if !exists || version != 1 {
+		t.Fatalf("expected version 1, got exists=%v version=%d", exists, version)
+	}
+}
