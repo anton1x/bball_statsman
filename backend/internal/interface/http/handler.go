@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	nethttp "net/http"
 
 	"bball_statsman_backend/internal/domain"
@@ -71,6 +72,13 @@ func (h *Handler) handleVideoStateVersion(w nethttp.ResponseWriter, r *nethttp.R
 	if !exists {
 		w.WriteHeader(nethttp.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{"version": 0, "exists": false})
+		return
+	}
+
+	etag := fmt.Sprintf(`"%d"`, version)
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(nethttp.StatusNotModified)
 		return
 	}
 

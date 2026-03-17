@@ -80,15 +80,14 @@ func (uc *VideoStateUseCase) ApplyOperations(ctx context.Context, url string, op
 	}
 
 	if current != nil && videoStatePayloadEqual(*current, state) {
-		state.Version = current.Version
-		state.UpdatedAt = current.UpdatedAt
+		return current, nil
+	}
+
+	state.UpdatedAt = time.Now().UnixMilli()
+	if state.Version <= 0 {
+		state.Version = 1
 	} else {
-		state.UpdatedAt = time.Now().UnixMilli()
-		if state.Version <= 0 {
-			state.Version = 1
-		} else {
-			state.Version += 1
-		}
+		state.Version += 1
 	}
 
 	if err := uc.repo.Save(ctx, state); err != nil {

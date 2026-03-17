@@ -778,7 +778,21 @@ async function loadVideoState(videoUrlToLoad) {
 
 async function loadVideoStateVersion(videoUrlToLoad) {
   try {
-    const payload = await apiRequest(`/api/videos/state/version?url=${encodeURIComponent(videoUrlToLoad)}`);
+    const etag = lastKnownVersion > 0 ? `"${lastKnownVersion}"` : null;
+    const headers = etag ? { 'If-None-Match': etag } : {};
+    const response = await fetch(`${apiBaseUrl}/api/videos/state/version?url=${encodeURIComponent(videoUrlToLoad)}`, {
+      headers: { 'Content-Type': 'application/json', ...headers },
+    });
+
+    if (response.status === 304) {
+      return null;
+    }
+
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+
+    const payload = await response.json();
     if (!payload?.exists) {
       return null;
     }
