@@ -143,6 +143,18 @@ func (uc *VideoStateUseCase) GetState(ctx context.Context, url string) (*domain.
 	return uc.repo.GetByURL(ctx, url)
 }
 
+func (uc *VideoStateUseCase) GetStateVersion(ctx context.Context, url string) (int64, bool, error) {
+	state, err := uc.GetState(ctx, url)
+	if err != nil {
+		return 0, false, err
+	}
+	if state == nil {
+		return 0, false, nil
+	}
+
+	return state.Version, true, nil
+}
+
 func (uc *VideoStateUseCase) DeleteState(ctx context.Context, url string) error {
 	url = strings.TrimSpace(url)
 	if url == "" {

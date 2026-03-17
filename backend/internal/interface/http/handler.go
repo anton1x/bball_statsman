@@ -19,6 +19,7 @@ func NewHandler(uc *usecase.VideoStateUseCase) *Handler {
 func (h *Handler) Register(mux *nethttp.ServeMux) {
 	mux.HandleFunc("/api/videos", h.handleVideos)
 	mux.HandleFunc("/api/videos/state", h.handleVideoState)
+	mux.HandleFunc("/api/videos/state/version", h.handleVideoStateVersion)
 	mux.HandleFunc("/api/videos/ops", h.handleVideoOperations)
 }
 
@@ -47,6 +48,33 @@ func (h *Handler) handleVideos(w nethttp.ResponseWriter, r *nethttp.Request) {
 	default:
 		w.WriteHeader(nethttp.StatusMethodNotAllowed)
 	}
+}
+
+func (h *Handler) handleVideoStateVersion(w nethttp.ResponseWriter, r *nethttp.Request) {
+	setJSONHeaders(w)
+	if r.Method != nethttp.MethodGet {
+		w.WriteHeader(nethttp.StatusMethodNotAllowed)
+		return
+	}
+
+	url := r.URL.Query().Get("url")
+	version, exists, err := h.uc.GetStateVersion(r.Context(), url)
+	if err != nil {
+		status := nethttp.StatusInternalServerError
+		if err == usecase.ErrInvalidURL {
+			status = nethttp.StatusBadRequest
+		}
+		writeError(w, status, err.Error())
+		return
+	}
+
+	if !exists {
+		w.WriteHeader(nethttp.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": 0, "exists": false})
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "exists": true})
 }
 
 func (h *Handler) handleVideoState(w nethttp.ResponseWriter, r *nethttp.Request) {
