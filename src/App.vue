@@ -413,11 +413,19 @@ const animatedEventRenderKey = ref(0);
 const shareLinkStatus = ref('');
 
 let syncInterval = null;
+let remoteSyncInterval = null;
 let animationTimeout = null;
 let shareLinkStatusTimeout = null;
 let playerShortcutTimeout = null;
 let pendingPlayerShortcutTeamIndex = null;
 let vkPlayer = null;
+let operationsFlushTimer = null;
+let settingsSyncTimer = null;
+let gamesSyncTimer = null;
+let isSyncApplying = false;
+let isFlushingOperations = false;
+let lastKnownVersion = 0;
+const pendingOperations = [];
 
 const eventGroups = [
   {
@@ -768,35 +776,101 @@ async function loadVideoState(videoUrlToLoad) {
   }
 }
 
-async function persistVideoState() {
-  if (!activeVideoUrl.value) {
+function buildSettingsSnapshot() {
+  return {
+    groupVisibility: groupVisibility.value,
+    eventVisibility: eventVisibility.value,
+    selectedGameFilter: selectedGameFilter.value,
+    selectedRosterFilter: selectedRosterFilter.value,
+    showOnlyHighlights: showOnlyHighlights.value,
+    teams: teams.value,
+    selectedPlayerId: selectedPlayerId.value,
+  };
+}
+
+function queueOperation(operation, flushDelayMs = 350) {
+  if (!activeVideoUrl.value || !isSessionStarted.value) {
     return;
   }
 
+  pendingOperations.push({
+    id: generateId(),
+    ...operation,
+  });
+
+  if (operationsFlushTimer) {
+    clearTimeout(operationsFlushTimer);
+  }
+
+  operationsFlushTimer = setTimeout(() => {
+    operationsFlushTimer = null;
+    flushOperations();
+  }, flushDelayMs);
+}
+
+async function flushOperations() {
+  if (isFlushingOperations || !activeVideoUrl.value || pendingOperations.length === 0) {
+    return;
+  }
+
+  isFlushingOperations = true;
+  const operationsBatch = pendingOperations.splice(0, pendingOperations.length);
+
   try {
-    await apiRequest('/api/videos/state', {
-      method: 'PUT',
+    const payload = await apiRequest('/api/videos/ops', {
+      method: 'POST',
       body: JSON.stringify({
-        state: {
-          url: activeVideoUrl.value,
-          events: events.value,
-          games: gameRanges.value,
-          settings: {
-            groupVisibility: groupVisibility.value,
-            eventVisibility: eventVisibility.value,
-            selectedGameFilter: selectedGameFilter.value,
-            selectedRosterFilter: selectedRosterFilter.value,
-            showOnlyHighlights: showOnlyHighlights.value,
-            teams: teams.value,
-            selectedPlayerId: selectedPlayerId.value,
-          },
-        },
+        url: activeVideoUrl.value,
+        operations: operationsBatch,
       }),
     });
-    await refreshSavedVideos();
+
+    if (payload?.state) {
+      applyStoredVideoState(payload.state, { fromRemote: true });
+      lastKnownVersion = Number(payload.state.version || 0);
+    }
   } catch {
-    // ignore persistence errors
+    pendingOperations.unshift(...operationsBatch);
+  } finally {
+    isFlushingOperations = false;
   }
+}
+
+function scheduleSettingsSync() {
+  if (settingsSyncTimer) {
+    clearTimeout(settingsSyncTimer);
+  }
+
+  settingsSyncTimer = setTimeout(() => {
+    settingsSyncTimer = null;
+    queueOperation({ type: 'settings_replace', settings: buildSettingsSnapshot() }, 0);
+  }, 900);
+}
+
+function scheduleGamesSync() {
+  if (gamesSyncTimer) {
+    clearTimeout(gamesSyncTimer);
+  }
+
+  gamesSyncTimer = setTimeout(() => {
+    gamesSyncTimer = null;
+    queueOperation({ type: 'games_replace', games: gameRanges.value }, 0);
+  }, 500);
+}
+
+async function syncFromServer() {
+  if (!activeVideoUrl.value || isFlushingOperations || pendingOperations.length > 0) {
+    return;
+  }
+
+  const next = await loadVideoState(activeVideoUrl.value);
+  const remoteVersion = Number(next?.version || 0);
+  if (!next || remoteVersion <= lastKnownVersion) {
+    return;
+  }
+
+  applyStoredVideoState(next, { fromRemote: true });
+  lastKnownVersion = remoteVersion;
 }
 
 async function removeSavedVideo(videoUrlToRemove) {
@@ -810,7 +884,9 @@ async function removeSavedVideo(videoUrlToRemove) {
   }
 }
 
-function applyStoredVideoState(videoState) {
+function applyStoredVideoState(videoState, options = {}) {
+  const { fromRemote = false } = options;
+  isSyncApplying = true;
   events.value = Array.isArray(videoState?.events) ? videoState.events : [];
   gameRanges.value = Array.isArray(videoState?.games) ? videoState.games : [];
 
@@ -836,6 +912,12 @@ function applyStoredVideoState(videoState) {
   const firstPlayerId = playerOptions.value[0]?.id || '';
   const storedPlayerId = String(videoState?.settings?.selectedPlayerId || '');
   selectedPlayerId.value = playerOptions.value.some((player) => player.id === storedPlayerId) ? storedPlayerId : firstPlayerId;
+
+  if (fromRemote) {
+    lastKnownVersion = Number(videoState?.version || 0);
+  }
+
+  isSyncApplying = false;
 }
 
 function resetVideoState() {
@@ -958,7 +1040,9 @@ async function startSession(selectedUrl = videoUrl.value) {
   currentTimeSec.value = 0;
   hasSyncedTime.value = false;
   animatedEvent.value = null;
-  applyStoredVideoState(await loadVideoState(normalizedUrl));
+  const existingState = await loadVideoState(normalizedUrl);
+  applyStoredVideoState(existingState, { fromRemote: true });
+  lastKnownVersion = Number(existingState?.version || 0);
   if (selectedGameFilter.value !== 'all' && !games.value.some((game) => String(game.number) === selectedGameFilter.value)) {
     selectedGameFilter.value = 'all';
   }
@@ -968,11 +1052,14 @@ async function startSession(selectedUrl = videoUrl.value) {
   }
   isSessionStarted.value = true;
   syncVideoQueryParam(normalizedUrl);
-  await persistVideoState();
+  queueOperation({ type: 'settings_replace', settings: buildSettingsSnapshot() }, 0);
+  queueOperation({ type: 'games_replace', games: gameRanges.value }, 0);
+  await flushOperations();
 }
 
 function resetSession() {
   stopSync();
+  stopRemoteSync();
   vkPlayer = null;
   isSessionStarted.value = false;
   activeVideoUrl.value = '';
@@ -983,6 +1070,22 @@ function resetSession() {
   shareLinkStatus.value = '';
   syncVideoQueryParam('');
   resetVideoState();
+  pendingOperations.splice(0, pendingOperations.length);
+  lastKnownVersion = 0;
+}
+
+function startRemoteSync() {
+  stopRemoteSync();
+  remoteSyncInterval = setInterval(() => {
+    syncFromServer();
+  }, 3000);
+}
+
+function stopRemoteSync() {
+  if (remoteSyncInterval) {
+    clearInterval(remoteSyncInterval);
+    remoteSyncInterval = null;
+  }
 }
 
 function postPlayerCommand(payload) {
@@ -1127,13 +1230,16 @@ function addEvent(type) {
     return;
   }
 
-  events.value.push({
+  const event = {
     id: generateId(),
     videoTimeSec: currentTimeSec.value,
     type,
     playerId: selectedPlayerId.value,
     isHighlighted: false,
-  });
+  };
+
+  events.value.push(event);
+  queueOperation({ type: 'event_upsert', event }, 120);
 }
 
 function eventShortcutLabel(type) {
@@ -1387,35 +1493,50 @@ function assignEventPlayer(eventId, playerId) {
     return;
   }
 
+  let nextEvent = null;
   events.value = events.value.map((event) => {
     if (event.id !== eventId) {
       return event;
     }
 
-    return {
+    nextEvent = {
       ...event,
       playerId,
     };
+
+    return nextEvent;
   });
+
+  if (nextEvent) {
+    queueOperation({ type: 'event_upsert', event: nextEvent });
+  }
 
   cancelAssignEventPlayer();
 }
 
 function toggleEventHighlight(eventId) {
+  let nextEvent = null;
   events.value = events.value.map((event) => {
     if (event.id !== eventId) {
       return event;
     }
 
-    return {
+    nextEvent = {
       ...event,
       isHighlighted: !event.isHighlighted,
     };
+
+    return nextEvent;
   });
+
+  if (nextEvent) {
+    queueOperation({ type: 'event_upsert', event: nextEvent });
+  }
 }
 
 function removeEvent(eventId) {
   events.value = events.value.filter((event) => event.id !== eventId);
+  queueOperation({ type: 'event_remove', eventId });
 
   if (assigningPlayerEventId.value === eventId) {
     cancelAssignEventPlayer();
@@ -1539,6 +1660,7 @@ function clearEvents() {
   }
 
   events.value = [];
+  queueOperation({ type: 'events_clear' });
   cancelAssignEventPlayer();
 }
 
@@ -1608,13 +1730,25 @@ watch(currentTimeSec, (nextSecond, previousSecond) => {
 });
 
 watch(
-  [events, gameRanges, selectedGameFilter, selectedRosterFilter, showOnlyHighlights, groupVisibility, eventVisibility, teams, selectedPlayerId],
+  gameRanges,
   () => {
-    if (!isSessionStarted.value) {
+    if (!isSessionStarted.value || isSyncApplying) {
       return;
     }
 
-    persistVideoState();
+    scheduleGamesSync();
+  },
+  { deep: true },
+);
+
+watch(
+  [selectedGameFilter, selectedRosterFilter, showOnlyHighlights, groupVisibility, eventVisibility, teams, selectedPlayerId],
+  () => {
+    if (!isSessionStarted.value || isSyncApplying) {
+      return;
+    }
+
+    scheduleSettingsSync();
   },
   { deep: true },
 );
@@ -1653,6 +1787,7 @@ onMounted(() => {
   document.addEventListener('keydown', handlePlayerShortcutKeydown);
 
   refreshSavedVideos();
+  startRemoteSync();
 
   if (!selectedPlayerId.value) {
     selectedPlayerId.value = playerOptions.value[0]?.id || '';
