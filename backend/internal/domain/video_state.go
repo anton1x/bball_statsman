@@ -3,6 +3,7 @@ package domain
 type VideoState struct {
 	URL       string        `json:"url"`
 	UpdatedAt int64         `json:"updatedAt"`
+	Version   int64         `json:"version"`
 	Events    []Event       `json:"events"`
 	Games     []GameRange   `json:"games"`
 	Settings  VideoSettings `json:"settings"`
@@ -48,4 +49,14 @@ type Team struct {
 type Player struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type VideoOperation struct {
+	ID       string         `json:"id"`
+	Type     string         `json:"type"`
+	Event    *Event         `json:"event,omitempty"`
+	EventID  string         `json:"eventId,omitempty"`
+	PlayerID string         `json:"playerId,omitempty"`
+	Games    []GameRange    `json:"games,omitempty"`
+	Settings *VideoSettings `json:"settings,omitempty"`
 }

@@ -1,4 +1,4 @@
-name: Deploy app to VPS (frontend + backend)
+name: Deploy backend to VPS
 
 on:
   push:
@@ -6,13 +6,6 @@ on:
       - main
     paths:
       - 'backend/**'
-      - 'src/**'
-      - 'index.html'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'vite.config.js'
-      - 'Dockerfile.frontend'
-      - 'nginx/**'
       - 'docker-compose.yml'
       - '.github/workflows/deploy-backend-vps.yml'
   workflow_dispatch:
@@ -24,43 +17,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Copy project files to VPS
+      - name: Copy backend files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          source: "backend,src,nginx,index.html,package.json,package-lock.json,vite.config.js,Dockerfile.frontend,docker-compose.yml"
+          source: "backend,docker-compose.yml"
           target: ${{ secrets.VPS_APP_DIR }}
 
-      - name: Write SSL certificates on VPS (optional)
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          SSL_CERT: ${{ secrets.VPS_SSL_CERT }}
-          SSL_KEY: ${{ secrets.VPS_SSL_KEY }}
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          envs: SSL_CERT,SSL_KEY
-          script: |
-            set -e
-            cd ${{ secrets.VPS_APP_DIR }}
-            mkdir -p ssl
-            if [ -n "$SSL_CERT" ] && [ -n "$SSL_KEY" ]; then
-              printf '%s\n' "$SSL_CERT" > ssl/tls.crt
-              printf '%s\n' "$SSL_KEY" > ssl/tls.key
-              chmod 600 ssl/tls.key
-              chmod 644 ssl/tls.crt
-              echo "SSL certificates updated from secrets"
-            else
-              rm -f ssl/tls.crt ssl/tls.key
-              echo "SSL secrets are empty: HTTPS certificates removed, app will run on HTTP"
-            fi
-
-      - name: Restart app on VPS
+      - name: Restart backend on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -70,5 +37,5 @@ jobs:
           script: |
             set -e
             cd ${{ secrets.VPS_APP_DIR }}
-            docker compose up -d --build
+            docker compose up -d --build backend
             docker image prune -f
