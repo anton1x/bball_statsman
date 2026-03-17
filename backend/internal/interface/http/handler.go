@@ -19,6 +19,7 @@ func NewHandler(uc *usecase.VideoStateUseCase) *Handler {
 func (h *Handler) Register(mux *nethttp.ServeMux) {
 	mux.HandleFunc("/api/videos", h.handleVideos)
 	mux.HandleFunc("/api/videos/state", h.handleVideoState)
+	mux.HandleFunc("/api/videos/ops", h.handleVideoOperations)
 }
 
 func (h *Handler) handleVideos(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -89,6 +90,35 @@ func (h *Handler) handleVideoState(w nethttp.ResponseWriter, r *nethttp.Request)
 	default:
 		w.WriteHeader(nethttp.StatusMethodNotAllowed)
 	}
+}
+
+func (h *Handler) handleVideoOperations(w nethttp.ResponseWriter, r *nethttp.Request) {
+	setJSONHeaders(w)
+	if r.Method != nethttp.MethodPost {
+		w.WriteHeader(nethttp.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		URL        string                  `json:"url"`
+		Operations []domain.VideoOperation `json:"operations"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, nethttp.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	state, err := h.uc.ApplyOperations(r.Context(), payload.URL, payload.Operations)
+	if err != nil {
+		status := nethttp.StatusInternalServerError
+		if err == usecase.ErrInvalidURL || err == usecase.ErrInvalidOperation {
+			status = nethttp.StatusBadRequest
+		}
+		writeError(w, status, err.Error())
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"state": state})
 }
 
 func setJSONHeaders(w nethttp.ResponseWriter) {
