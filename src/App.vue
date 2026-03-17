@@ -813,8 +813,19 @@ function buildSettingsSnapshot() {
     selectedRosterFilter: selectedRosterFilter.value,
     showOnlyHighlights: showOnlyHighlights.value,
     teams: teams.value,
-    selectedPlayerId: selectedPlayerId.value,
   };
+}
+
+function localPlayerKey(videoUrl) {
+  return `selectedPlayerId:${videoUrl}`;
+}
+
+function saveLocalPlayerId(videoUrl, playerId) {
+  try { localStorage.setItem(localPlayerKey(videoUrl), playerId); } catch {}
+}
+
+function loadLocalPlayerId(videoUrl) {
+  try { return localStorage.getItem(localPlayerKey(videoUrl)) || ''; } catch { return ''; }
 }
 
 function queueOperation(operation, flushDelayMs = 350) {
@@ -932,8 +943,8 @@ function applyStoredVideoState(videoState, options = {}) {
   selectedRosterFilter.value = rosterValues.includes(storedRosterFilter) ? storedRosterFilter : 'all';
 
   const firstPlayerId = playerOptions.value[0]?.id || '';
-  const storedPlayerId = String(videoState?.settings?.selectedPlayerId || '');
-  selectedPlayerId.value = playerOptions.value.some((player) => player.id === storedPlayerId) ? storedPlayerId : firstPlayerId;
+  const storedPlayerId = loadLocalPlayerId(activeVideoUrl.value);
+  selectedPlayerId.value = playerOptions.value.some((p) => p.id === storedPlayerId) ? storedPlayerId : firstPlayerId;
 
   if (fromRemote) {
     lastKnownVersion = Number(videoState?.version || 0);
@@ -1145,11 +1156,6 @@ function applyRemoteOperation(op) {
         const rosterValues = rosterFilterOptions.value.map((o) => o.value);
         const storedRosterFilter = String(s.selectedRosterFilter || 'all');
         selectedRosterFilter.value = rosterValues.includes(storedRosterFilter) ? storedRosterFilter : 'all';
-
-        const storedPlayerId = String(s.selectedPlayerId || '');
-        if (playerOptions.value.some((p) => p.id === storedPlayerId)) {
-          selectedPlayerId.value = storedPlayerId;
-        }
         break;
       }
     }
@@ -1860,7 +1866,7 @@ watch(
 );
 
 watch(
-  [selectedGameFilter, selectedRosterFilter, showOnlyHighlights, groupVisibility, eventVisibility, teams, selectedPlayerId],
+  [selectedGameFilter, selectedRosterFilter, showOnlyHighlights, groupVisibility, eventVisibility, teams],
   () => {
     if (!isSessionStarted.value || isSyncApplying) {
       return;
@@ -1898,6 +1904,10 @@ watch(
   },
   { deep: true },
 );
+
+watch(selectedPlayerId, (id) => {
+  if (activeVideoUrl.value) saveLocalPlayerId(activeVideoUrl.value, id);
+});
 
 onMounted(() => {
   window.addEventListener('message', handlePlayerMessage);
