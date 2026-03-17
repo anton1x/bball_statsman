@@ -319,6 +319,7 @@ button.secondary {
 .logs-toolbar {
   display: grid;
   gap: 0.55rem;
+  margin-bottom: 1rem;
 }
 
 .logs-toolbar-row {
