@@ -6,15 +6,17 @@ import (
 	nethttp "net/http"
 
 	"bball_statsman_backend/internal/domain"
+	"bball_statsman_backend/internal/pubsub"
 	"bball_statsman_backend/internal/usecase"
 )
 
 type Handler struct {
-	uc *usecase.VideoStateUseCase
+	uc     *usecase.VideoStateUseCase
+	broker *pubsub.Broker
 }
 
-func NewHandler(uc *usecase.VideoStateUseCase) *Handler {
-	return &Handler{uc: uc}
+func NewHandler(uc *usecase.VideoStateUseCase, broker *pubsub.Broker) *Handler {
+	return &Handler{uc: uc, broker: broker}
 }
 
 func (h *Handler) Register(mux *nethttp.ServeMux) {
@@ -22,6 +24,7 @@ func (h *Handler) Register(mux *nethttp.ServeMux) {
 	mux.HandleFunc("/api/videos/state", h.handleVideoState)
 	mux.HandleFunc("/api/videos/state/version", h.handleVideoStateVersion)
 	mux.HandleFunc("/api/videos/ops", h.handleVideoOperations)
+	mux.HandleFunc("/api/videos/ops/stream", h.handleVideoOpsStream)
 }
 
 func (h *Handler) handleVideos(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -155,6 +158,57 @@ func (h *Handler) handleVideoOperations(w nethttp.ResponseWriter, r *nethttp.Req
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{"state": state})
+}
+
+// handleVideoOpsStream is an SSE endpoint. Clients subscribe to real-time
+// operation broadcasts for a specific video URL.
+// GET /api/videos/ops/stream?url=<videoUrl>
+func (h *Handler) handleVideoOpsStream(w nethttp.ResponseWriter, r *nethttp.Request) {
+	if r.Method != nethttp.MethodGet {
+		w.WriteHeader(nethttp.StatusMethodNotAllowed)
+		return
+	}
+
+	flusher, ok := w.(nethttp.Flusher)
+	if !ok {
+		nethttp.Error(w, "streaming not supported", nethttp.StatusInternalServerError)
+		return
+	}
+
+	videoURL := r.URL.Query().Get("url")
+	if videoURL == "" {
+		nethttp.Error(w, "url is required", nethttp.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // disable nginx buffering
+
+	ch, cancel := h.broker.Subscribe(videoURL)
+	defer cancel()
+
+	// Send a keep-alive comment immediately so the client knows the stream is open.
+	fmt.Fprintf(w, ": connected\n\n")
+	flusher.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
 }
 
 func setJSONHeaders(w nethttp.ResponseWriter) {

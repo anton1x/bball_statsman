@@ -10,6 +10,7 @@ import (
 
 	"bball_statsman_backend/internal/infrastructure/filedb"
 	transport "bball_statsman_backend/internal/interface/http"
+	"bball_statsman_backend/internal/pubsub"
 	"bball_statsman_backend/internal/usecase"
 )
 
@@ -25,8 +26,9 @@ func main() {
 		log.Fatalf("failed to init schema: %v", err)
 	}
 
-	uc := usecase.NewVideoStateUseCase(repo)
-	h := transport.NewHandler(uc)
+	broker := pubsub.NewBroker()
+	uc := usecase.NewVideoStateUseCase(repo, broker)
+	h := transport.NewHandler(uc, broker)
 
 	mux := nethttp.NewServeMux()
 	h.Register(mux)
@@ -69,7 +71,7 @@ func withCORS(next nethttp.Handler, allowedOriginsCSV string) nethttp.Handler {
 		if isAllowedOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		}
 

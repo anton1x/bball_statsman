@@ -413,7 +413,6 @@ const animatedEventRenderKey = ref(0);
 const shareLinkStatus = ref('');
 
 let syncInterval = null;
-let remoteSyncInterval = null;
 let animationTimeout = null;
 let shareLinkStatusTimeout = null;
 let playerShortcutTimeout = null;
@@ -426,6 +425,8 @@ let isSyncApplying = false;
 let isFlushingOperations = false;
 let lastKnownVersion = 0;
 const pendingOperations = [];
+/** IDs of operations sent by this tab — used to skip echo from SSE */
+const sentOperationIds = new Set();
 
 const eventGroups = [
   {
@@ -844,6 +845,11 @@ async function flushOperations() {
   isFlushingOperations = true;
   const operationsBatch = pendingOperations.splice(0, pendingOperations.length);
 
+  // Mark these IDs so SSE echo is ignored
+  for (const op of operationsBatch) {
+    sentOperationIds.add(op.id);
+  }
+
   try {
     const payload = await apiRequest('/api/videos/ops', {
       method: 'POST',
@@ -854,10 +860,13 @@ async function flushOperations() {
     });
 
     if (payload?.state) {
-      applyStoredVideoState(payload.state, { fromRemote: true });
       lastKnownVersion = Number(payload.state.version || 0);
     }
   } catch {
+    // Remove IDs from sent set so they can be retried
+    for (const op of operationsBatch) {
+      sentOperationIds.delete(op.id);
+    }
     pendingOperations.unshift(...operationsBatch);
   } finally {
     isFlushingOperations = false;
@@ -884,25 +893,6 @@ function scheduleGamesSync() {
     gamesSyncTimer = null;
     queueOperation({ type: 'games_replace', games: gameRanges.value }, 0);
   }, 500);
-}
-
-async function syncFromServer() {
-  if (!activeVideoUrl.value || isFlushingOperations || pendingOperations.length > 0) {
-    return;
-  }
-
-  const remoteVersion = await loadVideoStateVersion(activeVideoUrl.value);
-  if (remoteVersion === null || remoteVersion <= lastKnownVersion) {
-    return;
-  }
-
-  const next = await loadVideoState(activeVideoUrl.value);
-  if (!next) {
-    return;
-  }
-
-  applyStoredVideoState(next, { fromRemote: true });
-  lastKnownVersion = Number(next.version || 0);
 }
 
 async function removeSavedVideo(videoUrlToRemove) {
@@ -1086,6 +1076,7 @@ async function startSession(selectedUrl = videoUrl.value) {
   }
   isSessionStarted.value = true;
   syncVideoQueryParam(normalizedUrl);
+  startRemoteSync();
   queueOperation({ type: 'settings_replace', settings: buildSettingsSnapshot() }, 0);
   queueOperation({ type: 'games_replace', games: gameRanges.value }, 0);
   await flushOperations();
@@ -1108,17 +1099,110 @@ function resetSession() {
   lastKnownVersion = 0;
 }
 
+/** @type {EventSource|null} */
+let sseSource = null;
+
+/**
+ * Apply a single operation received from SSE to local reactive state.
+ * Mirrors the backend applyOperation logic.
+ */
+function applyRemoteOperation(op) {
+  isSyncApplying = true;
+  try {
+    switch (op.type) {
+      case 'event_upsert': {
+        if (!op.event?.id) break;
+        const idx = events.value.findIndex((e) => e.id === op.event.id);
+        if (idx >= 0) {
+          events.value[idx] = op.event;
+        } else {
+          events.value.push(op.event);
+        }
+        break;
+      }
+      case 'event_remove':
+        events.value = events.value.filter((e) => e.id !== op.eventId);
+        break;
+      case 'events_clear':
+        events.value = [];
+        break;
+      case 'games_replace':
+        gameRanges.value = Array.isArray(op.games) ? op.games : [];
+        break;
+      case 'settings_replace': {
+        if (!op.settings) break;
+        const s = op.settings;
+        groupVisibility.value = { ...defaultGroupVisibility(), ...(s.groupVisibility || {}) };
+        eventVisibility.value = { ...defaultEventVisibility(), ...(s.eventVisibility || {}) };
+        showOnlyHighlights.value = Boolean(s.showOnlyHighlights);
+        teams.value = ensureTeamsStructure(s.teams);
+
+        const availableGameIds = games.value.map((g) => String(g.number));
+        const storedGameFilter = String(s.selectedGameFilter || 'all');
+        selectedGameFilter.value =
+          storedGameFilter === 'all' || availableGameIds.includes(storedGameFilter) ? storedGameFilter : 'all';
+
+        const rosterValues = rosterFilterOptions.value.map((o) => o.value);
+        const storedRosterFilter = String(s.selectedRosterFilter || 'all');
+        selectedRosterFilter.value = rosterValues.includes(storedRosterFilter) ? storedRosterFilter : 'all';
+
+        const storedPlayerId = String(s.selectedPlayerId || '');
+        if (playerOptions.value.some((p) => p.id === storedPlayerId)) {
+          selectedPlayerId.value = storedPlayerId;
+        }
+        break;
+      }
+    }
+  } finally {
+    nextTick(() => { isSyncApplying = false; });
+  }
+}
+
 function startRemoteSync() {
   stopRemoteSync();
-  remoteSyncInterval = setInterval(() => {
-    syncFromServer();
-  }, 5000);
+  if (!activeVideoUrl.value) return;
+
+  const url = `${apiBaseUrl}/api/videos/ops/stream?url=${encodeURIComponent(activeVideoUrl.value)}`;
+  sseSource = new EventSource(url);
+
+  sseSource.onmessage = (event) => {
+    let msg;
+    try { msg = JSON.parse(event.data); } catch { return; }
+
+    // Skip if version is not newer (e.g. duplicate delivery)
+    if (typeof msg.version === 'number' && msg.version <= lastKnownVersion) return;
+
+    const ops = Array.isArray(msg.operations) ? msg.operations : [];
+
+    // Filter out operations sent by this tab
+    const remoteOps = ops.filter((op) => !sentOperationIds.has(op.id));
+
+    // Clean up sent IDs that have been confirmed by the server
+    for (const op of ops) sentOperationIds.delete(op.id);
+
+    if (remoteOps.length > 0 && pendingOperations.length === 0 && !isFlushingOperations) {
+      for (const op of remoteOps) {
+        applyRemoteOperation(op);
+      }
+    } else if (remoteOps.length > 0) {
+      // We have local pending ops — do a full state reload to reconcile
+      loadVideoState(activeVideoUrl.value).then((next) => {
+        if (next) applyStoredVideoState(next, { fromRemote: true });
+      });
+    }
+
+    if (typeof msg.version === 'number') lastKnownVersion = msg.version;
+  };
+
+  sseSource.onerror = () => {
+    // EventSource auto-reconnects; nothing to do
+  };
 }
 
 function stopRemoteSync() {
-  if (remoteSyncInterval) {
-    clearInterval(remoteSyncInterval);
-    remoteSyncInterval = null;
+  if (sseSource) {
+    sseSource.close();
+    sseSource = null;
   }
 }
 
@@ -1821,7 +1905,6 @@ onMounted(() => {
   document.addEventListener('keydown', handlePlayerShortcutKeydown);
 
   refreshSavedVideos();
-  startRemoteSync();
 
   if (!selectedPlayerId.value) {
     selectedPlayerId.value = playerOptions.value[0]?.id || '';

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"bball_statsman_backend/internal/domain"
+	"bball_statsman_backend/internal/pubsub"
 )
 
 var ErrInvalidURL = errors.New("url is required")
@@ -21,11 +22,12 @@ type VideoStateRepository interface {
 }
 
 type VideoStateUseCase struct {
-	repo VideoStateRepository
+	repo   VideoStateRepository
+	broker *pubsub.Broker
 }
 
-func NewVideoStateUseCase(repo VideoStateRepository) *VideoStateUseCase {
-	return &VideoStateUseCase{repo: repo}
+func NewVideoStateUseCase(repo VideoStateRepository, broker *pubsub.Broker) *VideoStateUseCase {
+	return &VideoStateUseCase{repo: repo, broker: broker}
 }
 
 func (uc *VideoStateUseCase) SaveState(ctx context.Context, state domain.VideoState) error {
@@ -54,6 +56,8 @@ func (uc *VideoStateUseCase) SaveState(ctx context.Context, state domain.VideoSt
 	return uc.repo.Save(ctx, state)
 }
 
+// ApplyOperations applies a batch of operations to the video state, persists it,
+// and broadcasts the operations to all SSE subscribers of that video URL.
 func (uc *VideoStateUseCase) ApplyOperations(ctx context.Context, url string, operations []domain.VideoOperation) (*domain.VideoState, error) {
 	url = strings.TrimSpace(url)
 	if url == "" {
@@ -93,6 +97,12 @@ func (uc *VideoStateUseCase) ApplyOperations(ctx context.Context, url string, op
 	if err := uc.repo.Save(ctx, state); err != nil {
 		return nil, err
 	}
+
+	uc.broker.Publish(url, pubsub.Event{
+		VideoURL:   url,
+		Operations: operations,
+		Version:    state.Version,
+	})
 
 	return &state, nil
 }
