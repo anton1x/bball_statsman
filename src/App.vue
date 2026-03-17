@@ -375,7 +375,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const teamColorOptions = [
   { value: 'lime', label: 'Салатовый', swatch: '#84cc16' },
@@ -949,7 +949,9 @@ function applyStoredVideoState(videoState, options = {}) {
     lastKnownVersion = Number(videoState?.version || 0);
   }
 
-  isSyncApplying = false;
+  nextTick(() => {
+    isSyncApplying = false;
+  });
 }
 
 function resetVideoState() {
